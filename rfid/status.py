@@ -1,0 +1,32 @@
+from enum import Enum
+
+
+class Status(Enum):
+    SUCCESS = 0x00
+    WRONG_PARAM = 0x01
+    CMD_EXECUTION_FAILED = 0x02
+    RESERVE = 0x03
+    NO_COUNT_LABEL = 0x12
+    TIMEOUT = 0x14
+    TAG_RESPONSE_ERROR = 0x15
+    AUTHENTICATION_FAILED = 0x16
+    WRONG_PASSWORD = 0x17
+    NO_MORE_DATA = 0xFF
+
+
+class TagStatus(Enum):
+    NO_ERROR = 0xFF
+    TIMEOUT = 0x14
+    OTHER_ERROR = 0x81
+    STORAGE_AREA_ERROR = 0x82
+    STORAGE_LOCK = 0x83
+    INSUFFICIENT_POWER = 0x84
+    NO_POWER = 0x85
+
+
+class InventoryStatus(Enum):
+    SUCCESS = 0x00
+    WRONG_PARAM = 0x01
+    CMD_EXECUTION_FAILED = 0x02
+    NO_COUNT_LABEL = 0x12
+    EXCEED_MAX_TRANSMIT_SERIAL = 0x17

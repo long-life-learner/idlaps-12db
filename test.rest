@@ -1,0 +1,20 @@
+POST http://192.168.83.124:8100/ws/live2.php
+content-type: application/json
+
+{
+    "act": "GetBiodataMahasiswa",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZF9wZW5nZ3VuYSI6IjZjNmU1MzIzLWNhYTUtNDcxOS04ODRjLWI3ZjYyY2EzNjJjZiIsInVzZXJuYW1lIjoiMDQ1MDAzIiwibm1fcGVuZ2d1bmEiOiJQT0xJVEVLTklLIEdBSkFIIFRVTkdHQUwgICIsInRlbXBhdF9sYWhpciI6IiIsInRnbF9sYWhpciI6bnVsbCwiamVuaXNfa2VsYW1pbiI6IkwiLCJhbGFtYXQiOiIiLCJ5bSI6ImFsdXlzaXVzLm1hcndvdG9AZ21haWwuY29tIiwic2t5cGUiOiIiLCJub190ZWwiOiIiLCJhcHByb3ZhbF9wZW5nZ3VuYSI6IjUiLCJhX2FrdGlmIjoiMSIsInRnbF9nYW50aV9wd2QiOiIyMDIzLTEwLTA0VDE3OjAwOjAwLjAwMFoiLCJpZF9zZG1fcGVuZ2d1bmEiOm51bGwsImlkX3BkX3BlbmdndW5hIjpudWxsLCJpZF93aWwiOiIyODYxMDAgICIsImxhc3RfdXBkYXRlIjoiMjAyNC0wNy0yNlQxNDoyNDo1MS4zOTdaIiwic29mdF9kZWxldGUiOiIwIiwibGFzdF9zeW5jIjoiMjAyNC0xMC0xMFQwNzowODo1MC44NDhaIiwiaWRfdXBkYXRlciI6IjkxNmNiMzI4LTNlYzYtNGIwYi1iMmZmLWQxN2IwMzQ0NWEwZiIsImNzZiI6Ijg3Nzk4MzU5OSIsInRva2VuX3JlZyI6bnVsbCwiamFiYXRhbiI6bnVsbCwidGdsX2NyZWF0ZSI6IjE5NjktMTItMzFUMTc6MDA6MDAuMDAwWiIsIm5payI6bnVsbCwic2FsdCI6bnVsbCwiaWRfcGVyYW4iOjMsIm5tX3BlcmFuIjoiQWRtaW4gUERESUtUSSIsImlkX3NwIjoiOTMzZDg1M2EtY2YxZC00ZTBiLTgwMTMtNGQ3MzQ3NzI3YmYzIiwiaWRfc210IjoiMjAyNDEiLCJpYXQiOjE3MzYxNDc3OTYsImV4cCI6MTczNjE2NTc5Nn0.KbANBGDsMNvgEZlIwo7gxU4KXf6eCuq5MjWShcPJ3Pc"
+    
+    
+}
+
+###
+POST http://192.168.83.124:8100/ws/live2.php
+content-type: application/json
+
+{
+    "act": "GetToken",
+    "username" : "045003",
+    "password" :"Eyangamin.01"
+}
+
