@@ -9,6 +9,7 @@ from ui.connect_widget import ConnectWidget
 from ui.main_widget import MainWidget
 from ui.utils import pyinstaller_resource_path
 from util_log import setup_logging
+from ui.thread.inventory_thread import InventoryThread
 
 
 logger = getLogger()
@@ -18,7 +19,7 @@ class Main:
     def __init__(self, reader: Reader | None = None) -> None:
         super().__init__()
         self.reader = reader
-
+      
         if self.reader is None:
             # Lakukan sesuatu jika Reader tidak tersedia
             logger.warning("MainWidget() > Reader tidak diinisialisasi")

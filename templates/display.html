@@ -2,13 +2,54 @@
 <html>
   <head>
     <title>Data Display</title>
+    <style>
+      table {
+        border-collapse: collapse;
+        background-color: #ffffff;
+        overflow: hidden;
+        width: 500px;
+        border-radius: 10px;
+      }
+
+      th,
+      td {
+        font-family: "Motnserrat", sans-serif;
+        text-align: left;
+        font-size: 24px;
+        padding: 10px;
+      }
+
+      th {
+        background-color: green;
+        color: white;
+        position: sticky;
+      }
+    </style>
     <script>
+      let fetchInterval = null;
+      let resumeTimeout = null;
+
+      function startFetching() {
+        if (!fetchInterval) {
+          fetchInterval = setInterval(fetchData, 5000);
+        }
+      }
+
+      function stopFetching() {
+        if (fetchInterval) {
+          clearInterval(fetchInterval);
+          fetchInterval = null;
+        }
+      }
+
       function filterTable() {
         const input = document.getElementById("searchInput");
         const filter = input.value.toUpperCase();
         const table = document.getElementById("exTable");
         const tr = table.getElementsByTagName("tr");
-
+        // Stop fetch saat user mengetik
+        stopFetching();
+        clearTimeout(resumeTimeout);
         for (let i = 1; i < tr.length; i++) {
           const td = tr[i].getElementsByTagName("td")[0];
           if (td) {
@@ -17,6 +58,10 @@
               textValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
           }
         }
+        // Lanjutkan fetchData setelah 3 detik tidak mengetik
+        resumeTimeout = setTimeout(() => {
+          startFetching();
+        }, 3000);
       }
 
       async function fetchData() {
@@ -34,17 +79,53 @@
         const total_bib_el = document.getElementById("total_bib");
         total_bib_el.innerHTML = total_bib;
       }
-      setInterval(fetchData, 5000);
-      window.onload = fetchData;
+      // Mulai fetch otomatis saat halaman dimuat
+      window.onload = () => {
+        fetchData();
+        startFetching();
+      };
     </script>
+    <script>
+      function clearData(endpoint, confirmMessage) {
+        if (confirm(confirmMessage)) {
+          fetch(endpoint)
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.message) {
+                alert(data.message);
+              } else if (data.error) {
+                alert("Gagal menghapus data: " + data.error);
+              }
+              location.reload(); // refresh halaman setelah penghapusan
+            })
+            .catch((error) => {
+              alert("Terjadi kesalahan: " + error);
+            });
+        }
+        return false; // cegah default href
+      }
+    </script>
+
     <style>
       body {
         font-family: Verdana, Geneva, Tahoma, sans-serif;
       }
     </style>
   </head>
-  <body style="margin: 0 auto; background-color: beige; text-align: center">
-    <div style="position: sticky; top: 5px">
+  <body
+    style="
+      margin: 0 auto;
+      background-color: beige;
+      text-align: center;
+      padding: 10px;
+    "
+  >
+    <a href="./">Upload Data EPC</a>
+    <br />
+    <br />
+    <div style="position: sticky; top: 10px">
+      <h4 style="display: inline; font-size: 20px" id="total_bib">0</h4>
+
       <input
         type="button"
         value="Export"
@@ -73,7 +154,6 @@
         onkeyup="filterTable()"
         placeholder="Search by BIB number..."
       />
-      <h4 style="display: inline; font-size: 20px" id="total_bib">0</h4>
       <a
         style="
           margin-bottom: 5px;
@@ -90,17 +170,37 @@
 
           font-size: 16px;
         "
-        href="/clear_data"
-        onclick="return confirm('Anda yakin ingin dihapus ?')"
-        >Clear All</a
+        href="#"
+        onclick="return clearData('/clear_data', 'Anda yakin ingin hapus EPC dan Inventory?')"
+        >Hapus EPC dan Inventory</a
+      >
+      <a
+        style="
+          margin-bottom: 5px;
+          min-height: 24px;
+          padding: 10px;
+
+          border-radius: 8px;
+          cursor: pointer;
+          list-style: none;
+          display: inline;
+          background-color: red;
+          color: white;
+          text-decoration: none;
+
+          font-size: 16px;
+        "
+        href="#"
+        onclick="return clearData('/clear_inv', 'Anda yakin ingin hapus Inventory saja?')"
+        >Hapus Inventory Saja</a
       >
     </div>
 
-    <table border="1" id="exTable" style="margin: 0 auto">
+    <table border="3" id="exTable" style="margin: 0 auto">
       <thead>
         <tr>
           <th>BIB</th>
-          <th>Time</th>
+          <th>Waktu</th>
         </tr>
       </thead>
 

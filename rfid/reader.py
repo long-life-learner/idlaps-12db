@@ -20,7 +20,9 @@ class Reader(QObject):
     
     def __init__(self, transport: Transport | None = None) -> None:
         super().__init__()
+
         self.transport = transport
+        logger.info(transport)
         self.is_inventory = False
         logger.info(f"Reader() > __init__() > transport: {transport}")
 

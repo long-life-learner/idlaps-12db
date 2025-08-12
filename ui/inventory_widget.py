@@ -8,9 +8,12 @@ from rfid.reader_settings import StopAfter, WorkMode, AnswerModeInventoryParamet
 from rfid.tag import Tag
 from rfid.utils import hex_readable, calculate_rssi
 from ui.thread.inventory_thread import InventoryThread
-from datetime import datetime  # Tambahkan ini di bagian import
-import sqlite3
+from datetime import datetime  
+import psycopg2
+from psycopg2.extras import execute_values
 from threading import Timer
+import threading
+
 
 COLUMNS = ["Data", "Count", "RSSI", "Channel", "Timestamp"]
 
@@ -20,7 +23,8 @@ class InventoryWidget(QWidget):
 
     def __init__(self, reader: Reader) -> None:
         super().__init__()
-
+        # self.readers = readers
+        # self.inventory_threads = []
         self.reader: Reader = reader
         self.__work_mode: WorkMode = WorkMode.ANSWER_MODE
         self.__device_info: DeviceInfo | None = None
@@ -128,6 +132,8 @@ class InventoryWidget(QWidget):
 
     def stop_inventory(self) -> None:
         self.inventory_thread.request_stop = True
+        self.database_pooler.stop()  # Hentikan pooler
+        self.inventory_thread.terminate()
 
     def start_inventory(self) -> None:
         self.is_inventory_signal.emit(True)
@@ -144,11 +150,53 @@ class InventoryWidget(QWidget):
         self.inventory_thread.work_mode = self.work_mode
         self.inventory_thread.request_start = True
 
+    def start_inventory_all_readers(self):
+        self.tag_item_model.clear()  # Bersihkan data lama
+        self.inventory_threads = []
+
+        for reader in self.readers:
+            inventory_thread = InventoryThread(reader)
+
+            if self.work_mode == WorkMode.ANSWER_MODE:
+                answer_mode_inventory_parameter = AnswerModeInventoryParameter(
+                    stop_after=self.stop_after,
+                    value=self.param_spin_box.value()
+                )
+                inventory_thread.answer_mode_inventory_parameter = answer_mode_inventory_parameter
+            else:
+                inventory_thread.answer_mode_inventory_parameter = None
+
+            inventory_thread.work_mode = self.work_mode
+            inventory_thread.request_start = True
+
+            # Koneksikan sinyal untuk menangani hasil tag yang ditemukan
+            inventory_thread.result_tag_signal.connect(self.on_tag_found)  # Buat/ubah fungsi ini
+            inventory_thread.result_finished_signal.connect(self.on_inventory_finished)
+
+            inventory_thread.start()
+            self.inventory_threads.append(inventory_thread)
+
+        self.is_inventory_signal.emit(True)
+        self.start_stop_button.setText("Stop")
+
+    def stop_inventory_all_readers(self):
+        for thread in self.inventory_threads:
+            thread.request_stop = True
+
+        self.is_inventory_signal.emit(False)
+        self.start_stop_button.setText("Start")
+
+
+
     def __start_stop_clicked(self) -> None:
         if self.is_inventory:
             self.stop_inventory()
         else:
             self.start_inventory()
+        # if self.is_inventory:
+        #     self.stop_inventory_all_readers()
+        # else:
+        #     self.start_inventory_all_readers()
 
     def __receive_signal_result_tag(self, tag: Tag) -> None:
         def find_tag_index(t) -> int:
@@ -247,27 +295,120 @@ class InventoryTagItemModel(QAbstractTableModel):
         return None
 
 
+# class DatabasePooler:
+#     def __init__(self, model: InventoryTagItemModel, interval: int = 3):
+#         self.model = model
+#         self.interval = interval
+#         self.timer = None
+
+#     def create_table(self):
+#         connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
+#         cursor = connection.cursor()
+#         cursor.execute("""
+#         CREATE TABLE IF NOT EXISTS inventory (
+#             epc TEXT PRIMARY KEY,
+#             timestamp TEXT
+#         )
+#         """)
+#         # NEW
+#         cursor.execute("""
+#             CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc);
+#         """)
+#         connection.commit()
+#         connection.close()
+
+#     def start(self):
+#         self.timer = Timer(self.interval, self.send_data)
+#         self.timer.start()
+
+#     def stop(self):
+#         if self.timer:
+#             self.timer.cancel()
+
+#     def send_data(self):
+#         tags_to_send = self.model.tags.copy()  # Salin data dari model
+
+#         # NEW
+#         # try:
+#         #     connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
+#         #     cursor = connection.cursor()
+
+#         #     # Batch insert
+#         #     cursor.executemany("""
+#         #     INSERT INTO inventory (epc, timestamp)
+#         #     VALUES (?, ?)
+#         #     """, [(str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp) for tag in tags_to_send])
+#         #     connection.commit()
+#         #     connection.close()
+
+#         #     # Hapus semua dari model jika berhasil
+#         #     self.model.tags.clear()
+#         # except sqlite3.OperationalError as e:
+#         #     print(f"Error saving tags to database: {e}")
+
+#         for tag in tags_to_send:
+#             try:
+#                 connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
+#                 cursor = connection.cursor()
+#                 cursor.execute("""
+#                 INSERT INTO inventory (epc, timestamp)
+#                 VALUES (?, ?)
+#                 """, (str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp))
+#                 connection.commit()
+#                 connection.close()  
+
+#                 # Hapus dari model jika berhasil
+#                 index = self.model.tags.index(tag)
+#                 self.model.remove(index)
+#             except sqlite3.IntegrityError as e:
+#                 if "UNIQUE constraint failed" in str(e):
+#                     # Jangan cetak error jika duplikat primary key
+#                     pass
+#                 else:
+#                     print(f"IntegrityError for tag {tag.data}: {e}")
+#             except Exception as e:
+#                 print(f"Error saving tag {tag.data} to database: {e}")
+
+#         # Jalankan ulang pengiriman
+#         self.start()
+
 class DatabasePooler:
     def __init__(self, model: InventoryTagItemModel, interval: int = 3):
         self.model = model
         self.interval = interval
         self.timer = None
 
+        # Konfigurasi koneksi PostgreSQL
+        self.db_config = {
+            "host": "localhost",
+            "port": 5432,
+            "database": "inventory",
+            "user": "postgres",
+            "password": "Bismillah74"
+        }
+
+    def connect(self):
+        return psycopg2.connect(**self.db_config)
+
     def create_table(self):
-        connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
-        cursor = connection.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS inventory (
-            epc TEXT PRIMARY KEY,
-            timestamp TEXT
-        )
-        """)
-        # NEW
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc);
-        """)
-        connection.commit()
-        connection.close()
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS inventory (
+                    id SERIAL PRIMARY KEY,
+                    epc TEXT,
+                    timestamp TEXT
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc);
+            """)
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"[ERROR] Failed to create table: {e}")
 
     def start(self):
         self.timer = Timer(self.interval, self.send_data)
@@ -278,42 +419,63 @@ class DatabasePooler:
             self.timer.cancel()
 
     def send_data(self):
-        tags_to_send = self.model.tags.copy()  # Salin data dari model
+        tags_to_send = self.model.tags.copy()
 
-        # NEW
-        # try:
-        #     connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
-        #     cursor = connection.cursor()
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
 
-        #     # Batch insert
-        #     cursor.executemany("""
-        #     INSERT INTO inventory (epc, timestamp)
-        #     VALUES (?, ?)
-        #     """, [(str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp) for tag in tags_to_send])
-        #     connection.commit()
-        #     connection.close()
+            # allowed_minutes = int(self.minutes_textbox.text())
+            allowed_minutes = 1
 
-        #     # Hapus semua dari model jika berhasil
-        #     self.model.tags.clear()
-        # except sqlite3.OperationalError as e:
-        #     print(f"Error saving tags to database: {e}")
+            for tag in tags_to_send:
+                try:
+                    print(tag)
+                    epc_str = str(hex_readable(tag.data)).replace(" ", "")
+                    current_time = tag.timestamp
+                    
 
-        for tag in tags_to_send:
-            try:
-                connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
-                cursor = connection.cursor()
-                cursor.execute("""
-                INSERT INTO inventory (epc, timestamp)
-                VALUES (?, ?)
-                """, (str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp))
-                connection.commit()
-                connection.close()  
+                    # Ambil timestamp terakhir untuk EPC ini
+                    cursor.execute("""
+                        SELECT timestamp FROM inventory
+                        WHERE epc = %s
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """, (epc_str,))
+                    result = cursor.fetchone()
+                    should_insert = True
 
-                # Hapus dari model jika berhasil
-                index = self.model.tags.index(tag)
-                self.model.remove(index)
-            except Exception as e:
-                print(f"Error saving tag {tag.data} to database: {e}")
+                    if result is not None and result:
+                        last_time = result[0]
+                        diff_minutes = abs((datetime.strptime(current_time, "%H:%M:%S.%f") - datetime.strptime(last_time, "%H:%M:%S.%f")).total_seconds()) / 60
 
-        # Jalankan ulang pengiriman
+                        if diff_minutes < allowed_minutes:
+                            should_insert = False
+
+                    if should_insert:
+                        test = cursor.execute("""
+                            INSERT INTO inventory (epc, timestamp)
+                            VALUES (%s, %s);
+                        """, (
+                            epc_str,
+                            current_time
+                        ))
+                        print(test)
+
+                    # Hapus tag dari model dalam semua kasus (sukses insert atau diskip)
+                    index = self.model.tags.index(tag)
+                    self.model.remove(index)
+
+                except Exception as e:
+                    print(f"[ERROR] Insert tag {tag.data}: {e}")
+
+                conn.commit()
+                cursor.close()
+                conn.close()
+
+
+        except Exception as e:
+            print(f"[ERROR] Database operation failed: {e}")
+
+        # Jalankan lagi setelah interval
         self.start()

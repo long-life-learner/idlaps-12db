@@ -31,11 +31,23 @@ class RefreshUsbDeviceAddressesThread(QThread):
 
 class ConnectThread(QThread):
     reader_connected_signal = Signal(type)
+    finished_signal = Signal(object)
+
 
     def __init__(self, transport: Transport) -> None:
         super().__init__()
         self.transport = transport
-
+        
+    # def run(self):
+    #     try:
+    #         reader = Reader(self.transport)
+    #         reader.connect()
+    #         self.reader_connected_signal.emit(reader)
+    #     except Exception as e:
+    #         self.reader_connected_signal.emit(None)
+    #     finally:
+    #         self.finished_signal.emit(self.transport)
+    """
     def run(self) -> None:
         reader = Reader(self.transport)
         try:
@@ -64,4 +76,38 @@ class ConnectThread(QThread):
             log_traceback(logger, e)
             reader.close()
             self.reader_connected_signal.emit(e)
+            """
+    def run(self) -> None:
+        try:
+            self.transport.connect()
+            reader = Reader(self.transport)
+            response = reader.init()
+
+            logger.info(f"ConnectThread() > run() > response: {response}")
+
+            if response is None:
+                self.reader_connected_signal.emit(ReaderException("Failed connect to reader."))
+                reader.close()
+                return
+
+            if response.status == Status.SUCCESS:
+                self.reader_connected_signal.emit(reader)
+            else:
+                self.reader_connected_signal.emit(ReaderException(response.status.name))
+                reader.close()
+        except Exception as e:
+            logger.info(f"ConnectThread() > run() > error when connect with: {self.transport}")
+
+            # Get all IP Addresses
+            networks: list[dict] = get_all_networks()
+            for network in networks:
+                logger.info(f"ConnectThread() > run() > Interface: {network['interface']} > "
+                            f"IP Address: {network['address']} > Netmask: {network['netmask']}")
+
+            log_traceback(logger, e)
+            self.reader_connected_signal.emit(e)
+        finally:
+            self.finished_signal.emit(self.transport)
+
+        
 
