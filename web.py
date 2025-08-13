@@ -35,6 +35,7 @@ class EPC(db.Model):
     epc = db.Column(db.String(50), nullable=False, unique=True)
     name = db.Column(db.String(100), nullable=True)
     team = db.Column(db.String(100), nullable=True)
+    category = db.Column(db.String(100), nullable=True)
 
 class Inventory(db.Model):
     __tablename__ = 'inventory'
@@ -62,7 +63,7 @@ def close_database_connection():
 # Register the cleanup function to run when the server shuts down
 atexit.register(close_database_connection)
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/upload', methods=['GET', 'POST'])
 def upload_excel():
     if request.method == 'POST':
         file = request.files['file']
@@ -84,7 +85,7 @@ def upload_excel():
 
                 for _, row in data.iterrows():
                     try :
-                        epc_entry = EPC(bib_number=row['bib'], epc=row['epc'])
+                        epc_entry = EPC(bib_number=row['bib'], epc=row['epc'], name=row['name'], team=row['team'], category=row['category'])
                         db.session.merge(epc_entry)  # Use merge to avoid duplicates
                         count += 1
                         if first_row is None:
@@ -161,6 +162,10 @@ def clear_inv():
 @app.route('/display', methods=['GET'])
 def display_data():
     return render_template('display.html')
+
+@app.route('/', methods=['GET'])
+def home():
+    return render_template('menu.html')
 def format_time(seconds):
     """Format detik (float) ke HH:mm:ss.mmm. Menangani nilai negatif juga."""
     if seconds is None:
@@ -223,6 +228,7 @@ def race_data():
     try:
         # parse start_time param: format HH:MM:SS (time-only)
         start_time_str = request.args.get('start_time', '').strip()
+        category = request.args.get('category', '').strip()
         start_time_dt = None
         ref_date = date.today()
         if start_time_str:
@@ -249,6 +255,7 @@ def race_data():
                 Inventory.timestamp
             )
             .join(Inventory, EPC.epc == Inventory.epc)
+            .filter(EPC.category == category)
             .order_by(Inventory.timestamp.asc())
             .all()
         )
@@ -334,6 +341,14 @@ def race_data():
 @app.route('/race')
 def race_view():
     return render_template('race.html')
+
+@app.route('/categories', methods=['GET'])
+def get_categories():
+    # Ambil semua kategori unik dari tabel EPC
+    categories = db.session.query(EPC.category).distinct().all()
+    # Flatten dan filter None/empty
+    categories = [c[0] for c in categories if c[0]]
+    return jsonify({'categories': categories})
 
 if __name__ == '__main__':
     initialize_database()

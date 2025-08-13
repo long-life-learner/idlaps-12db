@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Race Live Timing</title>
+    <title>🏆Live Standings</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -57,11 +57,11 @@
         background-color: #222;
         overflow-x: hidden;
         transition: 0.3s;
-        padding-top: 60px;
+        padding-top: 10px;
         color: #fff;
       }
       .sidebar-content {
-        margin: 20px;
+        margin: 5px;
       }
       .sidebar .closebtn {
         position: absolute;
@@ -144,15 +144,30 @@
       .time-container {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
         margin-left: 5%;
         margin-right: 5%;
       }
       #displayStartTime,
-      #elapsedTime {
+      #elapsedTime,
+      .lap-to-go,
+      #displayTotalLap,
+      .raceName {
         font-weight: bold;
         color: #181818;
         font-size: 1.2em;
+      }
+      .info-label {
+        font-size: 0.95em;
+        color: #555;
+        margin-top: 2px;
+        margin-bottom: 2px;
+      }
+      body.dark .lap-to-go,
+      body.dark #displayTotalLap,
+      body.dark #elapsedTime,
+      body.dark #displayStartTime {
+        color: #388e3c;
       }
     </style>
     <!-- SheetJS for Excel export -->
@@ -165,8 +180,21 @@
       <button class="closebtn" onclick="closeSidebar()">&times;</button>
       <div class="sidebar-content">
         <h2>Settings</h2>
-        <label for="sidebarStartTime">Start Time:</label>
+        <!-- CATEGORY SELECT -->
+        <label for="categorySelect">Category:</label>
+        <select id="categorySelect"></select>
+        <label for="sidebarStartTime" style="margin-top: 10px"
+          >Start Time:</label
+        >
         <input type="time" id="sidebarStartTime" step="1" value="00:00:00" />
+        <label for="totalLapInput" style="margin-top: 10px">Total Lap:</label>
+        <input
+          type="number"
+          id="totalLapInput"
+          min="1"
+          value="10"
+          style="width: 70px"
+        />
         <button onclick="setStartTimeFromSidebar()">Set</button>
         <hr />
         <div>
@@ -187,7 +215,7 @@
       </div>
     </div>
 
-    <h1>Live Standings</h1>
+    <h1>🏆 JPM 2025 - <span id="categoryTitle"></span></h1>
     <div class="time-container">
       <!-- Display start time in main page -->
       <div>
@@ -200,6 +228,16 @@
         <span id="elapsedTime">00:00:00.000</span>
       </div>
     </div>
+    <div class="time-container">
+      <!-- Display start time in main page -->
+      <div>
+        <span>🏁</span> <span id="displayTotalLap">10</span> <span>Lap(s)</span>
+      </div>
+      <!-- Timer -->
+      <div>
+        <div class="lap-to-go" id="lapToGoInfo">Lap to go: -</div>
+      </div>
+    </div>
 
     <div class="responsive-table">
       <table id="raceTable">
@@ -207,7 +245,7 @@
           <tr>
             <th data-col="position">Pos</th>
             <th data-col="bib_number">BIB</th>
-            <th data-col="name">Nama</th>
+            <th data-col="name">Rider</th>
             <th data-col="team">Tim</th>
             <th data-col="lap_count">Lap</th>
             <th data-col="last_lap">Last Lap</th>
@@ -221,6 +259,7 @@
 
     <script>
       let raceStartTime = null;
+      let totalLap = Number(localStorage.getItem("totalLap")) || 10;
       let prevPositions = {};
       let prevOrder = {};
       let timerInterval = null;
@@ -247,20 +286,31 @@
         document.getElementById("mySidebar").style.width = "0";
       }
 
-      // Set start time from sidebar
+      // Set start time and total lap from sidebar
       function setStartTimeFromSidebar() {
         const val = document.getElementById("sidebarStartTime").value;
         raceStartTime = val;
         document.getElementById("displayStartTime").textContent =
           val || "00:00:00";
+        // Total lap
+        const lapVal =
+          Number(document.getElementById("totalLapInput").value) || 1;
+        totalLap = lapVal;
+        localStorage.setItem("totalLap", totalLap);
+        document.getElementById("displayTotalLap").textContent = totalLap;
         resetElapsedTimer();
+        updateLapToGo();
       }
 
       // Export table to Excel
       function exportTableToExcel() {
         const table = document.getElementById("raceTable");
         const wb = XLSX.utils.table_to_book(table, { sheet: "Race" });
-        XLSX.writeFile(wb, "race_standings.xlsx");
+        XLSX.writeFile(
+          wb,
+          "race_standings_" + localStorage.getItem("selectedCategory") ||
+            "" + ".xlsx"
+        );
       }
 
       // Column visibility
@@ -334,10 +384,56 @@
         updateColumnVisibility();
       });
 
+      let selectedCategory = localStorage.getItem("selectedCategory") || "";
+
+      // Fetch categories from backend and populate select box
+      function fetchCategories() {
+        fetch("/categories")
+          .then((res) => res.json())
+          .then((json) => {
+            const select = document.getElementById("categorySelect");
+            select.innerHTML = "";
+            json.categories.forEach((cat) => {
+              const opt = document.createElement("option");
+              opt.value = cat;
+              opt.textContent = cat;
+              select.appendChild(opt);
+            });
+            // Set selected value from localStorage or default to first
+            if (
+              selectedCategory &&
+              json.categories.includes(selectedCategory)
+            ) {
+              select.value = selectedCategory;
+            } else if (json.categories.length > 0) {
+              selectedCategory = json.categories[0];
+              select.value = selectedCategory;
+            }
+            localStorage.setItem("selectedCategory", selectedCategory);
+            fetchRaceData(); // Initial fetch with category
+          });
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        fetchCategories();
+        document
+          .getElementById("categorySelect")
+          .addEventListener("change", function () {
+            selectedCategory = this.value;
+            document.getElementById("categoryTitle").textContent =
+              selectedCategory;
+
+            localStorage.setItem("selectedCategory", selectedCategory);
+            fetchRaceData();
+          });
+      });
+
       // Fetch and animate table
       function fetchRaceData() {
         fetch(
-          `/race_data?start_time=${encodeURIComponent(raceStartTime || "")}`
+          `/race_data?start_time=${encodeURIComponent(
+            raceStartTime || ""
+          )}&category=${encodeURIComponent(selectedCategory || "")}`
         )
           .then((res) => res.json())
           .then((json) => {
@@ -397,6 +493,9 @@
 
             // Update column visibility after table update
             updateColumnVisibility();
+
+            // Update lap to go info
+            updateLapToGo(newRows);
           });
       }
 
@@ -410,9 +509,36 @@
           resetElapsedTimer();
         });
 
+      // Sync sidebar total lap input with display
+      document
+        .getElementById("totalLapInput")
+        .addEventListener("input", function () {
+          totalLap = Number(this.value) || 1;
+          localStorage.setItem("totalLap", totalLap);
+          document.getElementById("displayTotalLap").textContent = totalLap;
+          updateLapToGo();
+        });
+
       // Initial display
       document.getElementById("displayStartTime").textContent =
         document.getElementById("sidebarStartTime").value;
+      document.getElementById("totalLapInput").value = totalLap;
+      document.getElementById("displayTotalLap").textContent = totalLap;
+
+      // Lap to go logic
+      function updateLapToGo(rows) {
+        let leaderLap = 0;
+        if (rows && rows.length > 0) {
+          leaderLap = Number(rows[0].lap_count) || 0;
+        }
+        const lapToGo = Math.max(totalLap - leaderLap, 0);
+        document.getElementById("lapToGoInfo").textContent =
+          totalLap > 0
+            ? lapToGo > 0
+              ? `🚲 ${lapToGo} lap${lapToGo > 1 ? "s" : ""} to go`
+              : "🏁 Final Lap / Finish"
+            : "-";
+      }
 
       // Timer logic
       function parseTimeToDate(timeStr) {
@@ -455,6 +581,7 @@
         elapsedInterval = setInterval(updateElapsed, 43); // ~24fps
       }
       resetElapsedTimer();
+      updateLapToGo();
 
       setInterval(fetchRaceData, 3000);
     </script>
