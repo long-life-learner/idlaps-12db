@@ -5,7 +5,8 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 import os
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
+
 import atexit
 
 app = Flask(__name__)
@@ -32,11 +33,13 @@ class EPC(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     bib_number = db.Column(db.String(50), nullable=False)
     epc = db.Column(db.String(50), nullable=False, unique=True)
+    name = db.Column(db.String(100), nullable=True)
+    team = db.Column(db.String(100), nullable=True)
 
 class Inventory(db.Model):
     __tablename__ = 'inventory'
     id = db.Column(db.Integer, primary_key=True)
-    epc = db.Column(db.String(50), nullable=False, unique=True)
+    epc = db.Column(db.String(50), nullable=False)
     timestamp = db.Column(db.String(50), nullable=False)  # Changed to String to handle non-ISO format
     
 # Initialize database
@@ -158,67 +161,180 @@ def clear_inv():
 @app.route('/display', methods=['GET'])
 def display_data():
     return render_template('display.html')
+def format_time(seconds):
+    """Format detik (float) ke HH:mm:ss.mmm. Menangani nilai negatif juga."""
+    if seconds is None:
+        return "00:00:00.000"
+    sign = "-" if seconds < 0 else ""
+    s = abs(seconds)
+    sec_int = int(s)
+    ms = int(round((s - sec_int) * 1000))
+    # handle rounding carry
+    if ms == 1000:
+        sec_int += 1
+        ms = 0
+    hours = sec_int // 3600
+    minutes = (sec_int % 3600) // 60
+    secs = sec_int % 60
+    return f"{sign}{hours:02}:{minutes:02}:{secs:02}.{ms:03}"
+
+def parse_timestamp(ts, start_time_dt=None, ref_date=None):
+    """
+    Parse berbagai format:
+      - full ISO datetime -> datetime.fromisoformat
+      - time-only "HH:MM:SS" or "HH:MM:SS.fff" -> combine with ref_date or start_time_dt.date() or today
+    Jika start_time_dt diberikan, dan hasil < start_time_dt, tambahkan 1 hari sampai >= start_time_dt
+    """
+    if ts is None:
+        raise ValueError("Empty timestamp")
+    if isinstance(ts, datetime):
+        dt = ts
+    else:
+        ts_str = str(ts).strip()
+        # coba ISO full
+        try:
+            dt = datetime.fromisoformat(ts_str)
+        except Exception:
+            # coba time only
+            for fmt in ("%H:%M:%S.%f", "%H:%M:%S", "%H:%M"):
+                try:
+                    t = datetime.strptime(ts_str, fmt).time()
+                    break
+                except Exception:
+                    t = None
+            if t is None:
+                raise ValueError(f"Unsupported timestamp format: {ts_str}")
+            if start_time_dt:
+                base_date = start_time_dt.date()
+            elif ref_date:
+                base_date = ref_date
+            else:
+                base_date = date.today()
+            dt = datetime.combine(base_date, t)
+
+    # jika start_time_dt ada, pastikan dt >= start_time_dt (jika tidak, anggap lewat tengah malam -> tambah hari)
+    if start_time_dt:
+        while dt < start_time_dt:
+            dt += timedelta(days=1)
+    return dt
 
 @app.route('/race_data', methods=['GET'])
 def race_data():
     try:
-        data = []
+        # parse start_time param: format HH:MM:SS (time-only)
+        start_time_str = request.args.get('start_time', '').strip()
+        start_time_dt = None
+        ref_date = date.today()
+        if start_time_str:
+            # terima "HH:MM:SS" atau "HH:MM"
+            try:
+                t = datetime.strptime(start_time_str, "%H:%M:%S").time()
+            except ValueError:
+                try:
+                    t = datetime.strptime(start_time_str, "%H:%M").time()
+                except ValueError:
+                    # invalid -> fallback ke midnight
+                    t = time(0, 0, 0)
+            start_time_dt = datetime.combine(ref_date, t)
+        else:
+            # default: midnight hari ini (atau Anda bisa ubah ke earliest read)
+            start_time_dt = datetime.combine(ref_date, time(0, 0, 0))
 
-        # Ambil semua bib yang pernah muncul di inventory
-        bib_list = (
-            # db.session.query(EPC.bib_number, EPC.nama, EPC.tim, Inventory.timestamp)
-            db.session.query(EPC.bib_number, Inventory.timestamp)
+        # ambil data (Batasi columns supaya tidak menyebabkan unpack error)
+        rows = (
+            db.session.query(
+                EPC.bib_number,
+                EPC.name,
+                EPC.team,
+                Inventory.timestamp
+            )
             .join(Inventory, EPC.epc == Inventory.epc)
             .order_by(Inventory.timestamp.asc())
             .all()
         )
 
+        # group per bib dengan parsing timestamp
         bib_grouped = {}
-        for bib_number, ts in bib_list:
+        for bib_number, name, team, ts in rows:
+            try:
+                parsed_ts = parse_timestamp(ts, start_time_dt, ref_date)
+            except Exception:
+                # lewati timestamp yg tidak bisa di-parse
+                continue
             if bib_number not in bib_grouped:
                 bib_grouped[bib_number] = {
-                    # 'nama': nama,
-                    # 'tim': tim,
+                    'name': name,
+                    'team': team,
                     'timestamps': []
                 }
-            bib_grouped[bib_number]['timestamps'].append(datetime.fromisoformat(ts))
+            bib_grouped[bib_number]['timestamps'].append(parsed_ts)
 
-        # Hitung total waktu dan waktu lap terakhir
+        # hitung lap times (angka), total_seconds, last_lap_seconds, lap_count
+        riders = []
         for bib, info in bib_grouped.items():
-            timestamps = sorted(info['timestamps'])
-
-            # Hitung waktu antar lap
-            lap_times = [(timestamps[i] - timestamps[i - 1]).total_seconds()
-                         for i in range(1, len(timestamps))]
-
-            total_time = sum(lap_times) if lap_times else 0
-            last_lap = lap_times[-1] if lap_times else 0
-
-            data.append({
+            # hanya ambil timestamps yang >= start_time_dt
+            stamps = sorted([t for t in info['timestamps'] if t >= start_time_dt])
+            if not stamps:
+                continue
+            lap_times = []
+            # lap pertama = first_timestamp - start_time
+            lap_times.append((stamps[0] - start_time_dt).total_seconds())
+            for i in range(1, len(stamps)):
+                lap_times.append((stamps[i] - stamps[i - 1]).total_seconds())
+            total_seconds = sum(lap_times)
+            last_lap_seconds = lap_times[-1] if lap_times else 0.0
+            lap_count = len(lap_times)
+            riders.append({
                 'bib_number': bib,
-                # 'nama': info['nama'],
-                # 'tim': info['tim'],
-                'last_lap': last_lap,
-                'total_time': total_time
+                'name': info['name'],
+                'team': info['team'],
+                'lap_count': lap_count,
+                'total_seconds': total_seconds,
+                'last_lap_seconds': last_lap_seconds
             })
 
-        # Urutkan berdasarkan total_time (tercepat di atas)
-        data = sorted(data, key=lambda x: x['total_time'])
-        
-        # Hitung posisi dan gap
-        for i, row in enumerate(data):
-            row['position'] = i + 1
-            if i < len(data) - 1:
-                gap = data[i + 1]['total_time'] - row['total_time']
-                row['gap'] = round(gap, 2)
+        # sort: lap_count desc, total_seconds asc
+        riders.sort(key=lambda r: (-r['lap_count'], r['total_seconds']))
+
+        # hitung posisi dan gap (numeric), lalu format untuk dikirim
+        final = []
+        for i, r in enumerate(riders):
+            pos = i + 1
+            total_s = r['total_seconds']
+            last_s = r['last_lap_seconds']
+
+            if i == 0:
+                gap_str = "-"
             else:
-                row['gap'] = '-'
+                prev = riders[i - 1]
+                if r['lap_count'] == prev['lap_count']:
+                    diff = r['total_seconds'] - prev['total_seconds']
+                    gap_str = "+" + format_time(abs(diff))
+                else:
+                    lap_diff = prev['lap_count'] - r['lap_count']
+                    time_diff = abs(prev['total_seconds'] - r['total_seconds'])
+                    gap_str = f"+{lap_diff}L {format_time(time_diff)}"
 
-        return jsonify({'data': data})
+            final.append({
+                'position': pos,
+                'bib_number': r['bib_number'],
+                'name': r['name'],
+                'team': r['team'],
+                'lap_count': r['lap_count'],
+                'last_lap': format_time(last_s),
+                'total_time': format_time(total_s),
+                'gap': gap_str
+            })
 
+        return jsonify({'data': final, 'start_time': start_time_dt.isoformat()})
     except Exception as e:
+        # untuk debugging Anda bisa print(e) atau log
         return jsonify({'error': str(e)}), 500
-    
+
+@app.route('/race')
+def race_view():
+    return render_template('race.html')
+
 if __name__ == '__main__':
     initialize_database()
     app.run(debug=False)
