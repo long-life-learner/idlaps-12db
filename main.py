@@ -42,16 +42,16 @@ class Main:
         logger.info("Main() > start()")
         app = QApplication(sys.argv)
 
-        self.connect_widget = ConnectWidget()
-        self.connect_widget.reader_connected_signal.connect(self.__receive_signal_reader_from_connect_widget)
-        self.connect_widget.show()
+        # self.connect_widget = ConnectWidget()
+        # self.connect_widget.reader_connected_signal.connect(self.__receive_signal_reader_from_connect_widget)
+        # self.connect_widget.show()
 
         # Inisialisasi Reader tanpa transport
-        # self.reader = Reader()
+        self.reader = Reader()
 
         # Tampilkan MainWidget langsung
-        # self.main_widget = MainWidget(self.reader)
-        # self.main_widget.show()
+        self.main_widget = MainWidget(self.reader)
+        self.main_widget.show()
 
         sys.exit(app.exec())
 

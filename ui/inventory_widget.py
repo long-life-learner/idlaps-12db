@@ -1,4 +1,5 @@
 from typing import Any, Union
+from unittest import result
 from PySide6.QtCore import Qt, QModelIndex, QPersistentModelIndex, QAbstractTableModel, Signal
 from PySide6.QtGui import QColor, QBrush
 from PySide6.QtWidgets import QWidget, QLabel, QComboBox, QSpinBox, QPushButton, QTableView, QHeaderView, \
@@ -23,6 +24,7 @@ class InventoryWidget(QWidget):
 
     def __init__(self, reader: Reader) -> None:
         super().__init__()
+
         # self.readers = readers
         # self.inventory_threads = []
         self.reader: Reader = reader
@@ -62,12 +64,24 @@ class InventoryWidget(QWidget):
         self.inventory_table_view.horizontalHeader().setStretchLastSection(True)
         self.inventory_table_view.verticalHeader().setDefaultSectionSize(10)
 
+        self.allowed_minutes_label = QLabel("Allow (min)")
+        self.allowed_minutes_label.setFixedWidth(70)
+        self.allowed_minutes_spinbox = QSpinBox()
+        self.allowed_minutes_spinbox.setRange(0, 120)
+        self.allowed_minutes_spinbox.setValue(5)
+        self.allowed_minutes_spinbox.setMaximumWidth(60)
+        self.allowed_minutes_spinbox.valueChanged.connect(self.update_allowed_minutes)
+
+
+
         h_layout = QHBoxLayout()
         h_layout.addWidget(self.start_stop_button)
         h_layout.addWidget(self.stop_after_label)
         h_layout.addWidget(self.stop_after_combo_box)
         h_layout.addWidget(self.param_spin_box)
         h_layout.addWidget(self.param_unit_label)
+        h_layout.addWidget(self.allowed_minutes_label)         # Tambahkan label
+        h_layout.addWidget(self.allowed_minutes_spinbox)       # Tambahkan spinbox
         h_layout.addWidget(QLabel())
 
         v_layout = QVBoxLayout()
@@ -78,6 +92,9 @@ class InventoryWidget(QWidget):
         self.stop_after_combo_box.setCurrentIndex(StopAfter.TIME.value)
         self.database_pooler = DatabasePooler(self.tag_item_model)
         self.database_pooler.start()
+
+    def update_allowed_minutes(self, value):
+        self.tag_item_model.allowed_minutes = value
 
     def close(self) -> None:
         self.database_pooler.stop()  # Hentikan pooler
@@ -227,6 +244,7 @@ class InventoryTagItemModel(QAbstractTableModel):
         super().__init__()
         self.parent = parent
         self.tags: list[Tag] = []
+        self.allowed_minutes = 5  # default
 
     def rowCount(self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex) -> int:
         return len(self.tags)
@@ -425,16 +443,16 @@ class DatabasePooler:
             conn = self.connect()
             cursor = conn.cursor()
 
-            # allowed_minutes = int(self.minutes_textbox.text())
-            allowed_minutes = 1
+            allowed_minutes = getattr(self.model, "allowed_minutes", 5)  # default 2 jika tidak ada
+
+            
+            print(allowed_minutes)
 
             for tag in tags_to_send:
                 try:
-                    print(tag)
                     epc_str = str(hex_readable(tag.data)).replace(" ", "")
                     current_time = tag.timestamp
                     
-
                     # Ambil timestamp terakhir untuk EPC ini
                     cursor.execute("""
                         SELECT timestamp FROM inventory
@@ -444,23 +462,48 @@ class DatabasePooler:
                     """, (epc_str,))
                     result = cursor.fetchone()
                     should_insert = True
-
+                    
                     if result is not None and result:
                         last_time = result[0]
-                        diff_minutes = abs((datetime.strptime(current_time, "%H:%M:%S.%f") - datetime.strptime(last_time, "%H:%M:%S.%f")).total_seconds()) / 60
+                        # Jika last_time bertipe string, parse ke datetime
+                        if isinstance(last_time, str):
+                            # Ambil waktu saja, lalu gabungkan dengan tanggal hari ini
+                            last_time_time = datetime.strptime(last_time, "%H:%M:%S.%f").time()
+                            today = datetime.now().date()
+                            last_time_dt = datetime.combine(today, last_time_time)
+                        else:
+                            last_time_dt = last_time
+
+                        # Jika current_time bertipe string, parse ke datetime
+                        if isinstance(current_time, str):
+                            current_time_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
+                        else:
+                            current_time_dt = current_time
+
+                        diff_minutes = abs((current_time_dt - last_time_dt).total_seconds()) / 60
+                       
 
                         if diff_minutes < allowed_minutes:
                             should_insert = False
 
                     if should_insert:
-                        test = cursor.execute("""
+                         # Format timestamp ke 'HH:MM:SS.sss'
+                        if isinstance(current_time, datetime):
+                            formatted_time = current_time.strftime("%H:%M:%S.%f")[:-3]
+                        elif isinstance(current_time, str):
+                            # Jika sudah string, parse dulu ke datetime
+                            dt = datetime.strptime(current_time, "%Y-%m-%d %H:%M:%S.%f")
+                            formatted_time = dt.strftime("%H:%M:%S.%f")[:-3]
+                        else:
+                            formatted_time = str(current_time)  # fallback
+
+                        cursor.execute("""
                             INSERT INTO inventory (epc, timestamp)
                             VALUES (%s, %s);
                         """, (
                             epc_str,
-                            current_time
+                            formatted_time
                         ))
-                        print(test)
 
                     # Hapus tag dari model dalam semua kasus (sukses insert atau diskip)
                     index = self.model.tags.index(tag)
@@ -469,10 +512,9 @@ class DatabasePooler:
                 except Exception as e:
                     print(f"[ERROR] Insert tag {tag.data}: {e}")
 
-                conn.commit()
-                cursor.close()
-                conn.close()
-
+            conn.commit()
+            cursor.close()
+            conn.close()
 
         except Exception as e:
             print(f"[ERROR] Database operation failed: {e}")
