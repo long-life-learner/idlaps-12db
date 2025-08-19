@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 import os
 import pandas as pd
 from datetime import datetime, date, time, timedelta
+import re
 
 import atexit
 
@@ -122,18 +123,65 @@ def upload_excel():
 
 @app.route('/data', methods=['GET'])
 def fetch_data():
-    results = db.session.query(EPC.bib_number, Inventory.timestamp).join(Inventory, EPC.epc == Inventory.epc).order_by(Inventory.timestamp.desc()).all()
+    results = db.session.query(Inventory.id, EPC.bib_number, Inventory.timestamp).join(Inventory, EPC.epc == Inventory.epc).order_by(Inventory.timestamp.desc()).all()
     data = []
     for r in results:
         try:
-            formatted_timestamp = datetime.fromisoformat(r[1]).strftime('%Y-%m-%d %H:%M:%S')
+            formatted_timestamp = datetime.fromisoformat(r[2]).strftime('%Y-%m-%d %H:%M:%S')
         except ValueError:
-            formatted_timestamp = r[1]  # Use raw value if not ISO format
-        data.append({'bib_number': r[0], 'timestamp': formatted_timestamp})
+            formatted_timestamp = r[2]  # Use raw value if not ISO format
+        data.append({'id': r[0],'bib_number': r[1], 'timestamp': formatted_timestamp})
     
     total_bib = len({d['bib_number'] for d in data})
     return jsonify({'data': data, 'total_bib': total_bib})
 
+# endpoint hapus data per ID
+@app.route('/delete/<int:item_id>', methods=['DELETE'])
+def delete_item(item_id):
+    item = Inventory.query.get(item_id)
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'message': f'Data dengan ID {item_id} berhasil dihapus'})
+    else:
+        return jsonify({'error': 'Data tidak ditemukan'}), 404
+
+TIME_REGEX = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}$')
+
+@app.route('/update/<int:item_id>', methods=['PUT'])
+def update_item(item_id):
+    data = request.get_json(silent=True) or {}
+    new_timestamp = (data.get("timestamp") or "").strip()
+
+    if not new_timestamp:
+        return jsonify({"error": "timestamp tidak boleh kosong"}), 400
+
+    # Validasi format HH:MM:SS.mmm
+    if not TIME_REGEX.match(new_timestamp):
+        return jsonify({"error": "Format waktu harus HH:MM:SS.mmm, contoh 22:51:52.968"}), 400
+
+    item = Inventory.query.get(item_id)
+    if not item:
+        return jsonify({"error": f"Data dengan ID {item_id} tidak ditemukan"}), 404
+
+    try:
+        # Jika kolom Inventory.timestamp adalah String/Text, langsung simpan string:
+        item.timestamp = new_timestamp
+
+        # Jika kolomnya bertipe DateTime dan kamu ingin tetap menyimpan:
+        # - Simpan sebagai string di kolom terpisah, ATAU
+        # - Gabungkan dengan tanggal (mis. tanggal hari ini) sebelum set ke DateTime.
+        # Contoh gabung (opsional):
+        # from datetime import datetime, date
+        # t = datetime.strptime(new_timestamp, '%H:%M:%S.%f').time()
+        # item.timestamp = datetime.combine(date.today(), t)
+
+        db.session.commit()
+        return jsonify({"message": f"Waktu untuk ID {item_id} berhasil diperbarui"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/clear_data', methods=['GET'])
 def clear_data():
     try:
