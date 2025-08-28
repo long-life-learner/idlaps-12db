@@ -36,14 +36,20 @@ class EPC(db.Model):
     epc = db.Column(db.String(50), nullable=False, unique=True)
     name = db.Column(db.String(100), nullable=True)
     team = db.Column(db.String(100), nullable=True)
-    category = db.Column(db.String(100), nullable=True)
+    category_id = db.Column(db.Integer, nullable=True)
 
 class Inventory(db.Model):
     __tablename__ = 'inventory'
     id = db.Column(db.Integer, primary_key=True)
     epc = db.Column(db.String(50), nullable=False)
     timestamp = db.Column(db.String(50), nullable=False)  # Changed to String to handle non-ISO format
-    
+
+class Category(db.Model):
+    __tablename__ = 'category'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    lap = db.Column(db.Integer, nullable=True)
+
 # Initialize database
 def initialize_database():
     with app.app_context():
@@ -86,7 +92,7 @@ def upload_excel():
 
                 for _, row in data.iterrows():
                     try :
-                        epc_entry = EPC(bib_number=row['bib'], epc=row['epc'], name=row['name'], team=row['team'], category=row['category'])
+                        epc_entry = EPC(bib_number=row['bib'], epc=row['epc'], name=row['name'], team=row['team'], category_id=row['category_id'])
                         db.session.merge(epc_entry)  # Use merge to avoid duplicates
                         count += 1
                         if first_row is None:
@@ -303,7 +309,7 @@ def race_data():
                 Inventory.timestamp
             )
             .join(Inventory, EPC.epc == Inventory.epc)
-            .filter(EPC.category == category)
+            .filter(EPC.category_id == category)
             .order_by(Inventory.timestamp.asc())
             .all()
         )
@@ -392,10 +398,11 @@ def race_view():
 
 @app.route('/categories', methods=['GET'])
 def get_categories():
-    # Ambil semua kategori unik dari tabel EPC
-    categories = db.session.query(EPC.category).distinct().all()
+    # Ambil semua kategori unik dari tabel Category
+    categories = db.session.query(Category.id, Category.name).distinct().all()
     # Flatten dan filter None/empty
-    categories = [c[0] for c in categories if c[0]]
+    categories = [{'id': c[0], 'name': c[1]} for c in categories if c[0]]
+
     return jsonify({'categories': categories})
 
 if __name__ == '__main__':

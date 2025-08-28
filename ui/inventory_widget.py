@@ -64,7 +64,7 @@ class InventoryWidget(QWidget):
         self.inventory_table_view.horizontalHeader().setStretchLastSection(True)
         self.inventory_table_view.verticalHeader().setDefaultSectionSize(10)
 
-        self.allowed_minutes_label = QLabel("Allow (min)")
+        self.allowed_minutes_label = QLabel("Int (min)")
         self.allowed_minutes_label.setFixedWidth(70)
         self.allowed_minutes_spinbox = QSpinBox()
         self.allowed_minutes_spinbox.setRange(0, 120)
@@ -72,8 +72,7 @@ class InventoryWidget(QWidget):
         self.allowed_minutes_spinbox.setMaximumWidth(60)
         self.allowed_minutes_spinbox.valueChanged.connect(self.update_allowed_minutes)
 
-
-
+        
         h_layout = QHBoxLayout()
         h_layout.addWidget(self.start_stop_button)
         h_layout.addWidget(self.stop_after_label)
@@ -253,6 +252,18 @@ class InventoryTagItemModel(QAbstractTableModel):
         return len(COLUMNS)
 
     def data(self, index: Union[QModelIndex, QPersistentModelIndex], role: int = Qt.DisplayRole) -> Any:
+        if not index.isValid():
+            return None
+
+        row = index.row()
+        col = index.column()
+
+        # cegah IndexError
+        if row < 0 or row >= len(self.tags):
+            return None
+
+        tag = self.tags[row]
+        
         if role == Qt.DisplayRole:
             tag = self.tags[index.row()]
             if index.column() == 0:  # EPC
@@ -414,7 +425,7 @@ class DatabasePooler:
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS inventory (
-                    id SERIAL PRIMARY KEY,
+                    id SERIAL,
                     epc TEXT,
                     timestamp TEXT
                 );
@@ -443,10 +454,7 @@ class DatabasePooler:
             conn = self.connect()
             cursor = conn.cursor()
 
-            allowed_minutes = getattr(self.model, "allowed_minutes", 5)  # default 2 jika tidak ada
-
-            
-            print(allowed_minutes)
+            allowed_minutes = getattr(self.model, "allowed_minutes", 5)  # default 1 jika tidak ada
 
             for tag in tags_to_send:
                 try:
@@ -461,41 +469,41 @@ class DatabasePooler:
                         LIMIT 1
                     """, (epc_str,))
                     result = cursor.fetchone()
+
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM inventory
+                        WHERE epc = %s
+                    """, (epc_str,))
+                    count_row = cursor.fetchone()
+                    existing_lap = int(count_row[0]) if count_row and count_row[0] is not None else 0
+
+                    cursor.execute("""
+                        SELECT b.lap FROM epc 
+                        JOIN category b ON epc.category_id = b.id
+                        WHERE epc.epc = %s
+                    """, (epc_str,))
+                    allowed_laps = cursor.fetchone()
+
                     should_insert = True
                     
                     if result is not None and result:
                         last_time = result[0]
-                        # Jika last_time bertipe string, parse ke datetime
-                        if isinstance(last_time, str):
-                            # Ambil waktu saja, lalu gabungkan dengan tanggal hari ini
-                            last_time_time = datetime.strptime(last_time, "%H:%M:%S.%f").time()
-                            today = datetime.now().date()
-                            last_time_dt = datetime.combine(today, last_time_time)
-                        else:
-                            last_time_dt = last_time
-
-                        # Jika current_time bertipe string, parse ke datetime
-                        if isinstance(current_time, str):
-                            current_time_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
-                        else:
-                            current_time_dt = current_time
-
+                        
+                        last_time_dt = datetime.strptime(last_time, "%H:%M:%S.%f")
+                        current_time_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
                         diff_minutes = abs((current_time_dt - last_time_dt).total_seconds()) / 60
-                       
 
-                        if diff_minutes < allowed_minutes:
+                        """
+                        SIMPAN TIDAK BOLEH JIKA :
+                        1. Selish waktu epc terakhir dengan waktu saat ini lebih dari {allowed_minutes} menit
+                        2. Lap yang tercatat lebih dari {allowed_laps} lap
+                        """
+
+                        if diff_minutes < allowed_minutes or existing_lap >= allowed_laps[0]:
                             should_insert = False
 
                     if should_insert:
-                         # Format timestamp ke 'HH:MM:SS.sss'
-                        if isinstance(current_time, datetime):
-                            formatted_time = current_time.strftime("%H:%M:%S.%f")[:-3]
-                        elif isinstance(current_time, str):
-                            # Jika sudah string, parse dulu ke datetime
-                            dt = datetime.strptime(current_time, "%Y-%m-%d %H:%M:%S.%f")
-                            formatted_time = dt.strftime("%H:%M:%S.%f")[:-3]
-                        else:
-                            formatted_time = str(current_time)  # fallback
+                        formatted_time = str(current_time) 
 
                         cursor.execute("""
                             INSERT INTO inventory (epc, timestamp)

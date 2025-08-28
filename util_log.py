@@ -12,7 +12,9 @@ def setup_logging():
 
     log_file_path = f"logs/{os.getenv('FILENAME_LOG')}"
     console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
+    # console.setLevel(logging.NOTSET)
+    console.setLevel(logging.WARNING)  # hanya WARNING ke atas yg muncul di console
+    
     console.setFormatter(logging.Formatter(
         '%(name)s: %(levelname)s %(threadName)s %(message)s'))
 

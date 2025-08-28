@@ -171,7 +171,9 @@
       }
     </style>
     <!-- SheetJS for Excel export -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver"></script>
   </head>
   <body>
     <button class="openbtn" onclick="openSidebar()">☰</button>
@@ -211,7 +213,7 @@
           </label>
         </div>
         <hr />
-        <button onclick="exportTableToExcel()">Export to Excel</button>
+        <button onclick="exportTableWithLogo()">Export to Excel</button>
       </div>
     </div>
 
@@ -302,16 +304,155 @@
         updateLapToGo();
       }
 
-      // Export table to Excel
-      function exportTableToExcel() {
+      async function exportTableWithLogo() {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet("Race");
+        // === 1. Tambah Logo ===
+        const image = workbook.addImage({
+          base64: await fetch("/static/logo.png")
+            .then((res) => res.blob())
+            .then(
+              (blob) =>
+                new Promise((r) => {
+                  const reader = new FileReader();
+                  reader.onload = () => r(reader.result);
+                  reader.readAsDataURL(blob);
+                })
+            ),
+          extension: "png",
+        });
+        sheet.addImage(image, "A1:H3"); // posisi logo
+
+        // === 2. Ambil Data Tabel HTML ===
         const table = document.getElementById("raceTable");
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Race" });
-        XLSX.writeFile(
-          wb,
-          "race_standings_" + localStorage.getItem("selectedCategory") ||
-            "" + ".xlsx"
-        );
+        const rows = [];
+        table.querySelectorAll("tr").forEach((tr) => {
+          const row = [];
+          tr.querySelectorAll("th, td").forEach((td) =>
+            row.push(td.textContent.trim())
+          );
+          rows.push(row);
+        });
+
+        // === 3. Tambah Data ke Excel Mulai Row 6 ===
+        sheet.addRows(rows);
+
+        // === 4. Styling Kolom Header ===
+        const headerRow = sheet.getRow(5); // row ke-6 adalah header
+        headerRow.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "36e124" }, // hijau stabilo elegan
+          };
+          cell.font = {
+            name: "Calibri",
+            size: 14,
+            bold: true,
+            color: { argb: "ffffff" },
+          };
+          cell.alignment = { vertical: "middle", horizontal: "center" };
+          cell.border = {
+            top: { style: "thin" },
+            left: { style: "thin" },
+            bottom: { style: "thin" },
+            right: { style: "thin" },
+          };
+        });
+
+        // === 5. Styling Semua Row Data ===
+        sheet.eachRow((row, rowNumber) => {
+          if (rowNumber >= 6) {
+            // mulai dari row setelah header
+            row.eachCell((cell) => {
+              cell.font = { name: "Calibri", size: 14 };
+              cell.alignment = { vertical: "middle", horizontal: "center" };
+              cell.border = {
+                top: { style: "thin" },
+                left: { style: "thin" },
+                bottom: { style: "thin" },
+                right: { style: "thin" },
+              };
+            });
+          }
+        });
+
+        // === 6. Auto Width Kolom ===
+        sheet.columns.forEach((column) => {
+          let maxLength = 0;
+          column.eachCell({ includeEmpty: true }, (cell) => {
+            const cellValue = cell.value ? cell.value.toString() : "";
+            maxLength = Math.max(maxLength, cellValue.length);
+          });
+          column.width = maxLength < 15 ? 15 : maxLength + 2;
+        });
+
+        // === 7. Print Setting (A4 Landscape, Fit to Width) ===
+        sheet.pageSetup = {
+          paperSize: 9, // A4
+          orientation: "landscape",
+          fitToPage: true,
+          fitToWidth: 1,
+          fitToHeight: 0,
+          margins: {
+            left: 0.5,
+            right: 0.5,
+            top: 0.5,
+            bottom: 0.5,
+            header: 0.2,
+            footer: 0.2,
+          },
+        };
+
+        // === 8. Simpan File ===
+        workbook.xlsx.writeBuffer().then((buffer) => {
+          saveAs(new Blob([buffer]), "race_standings_with_logo.xlsx");
+        });
+
+        // Tambah logo
+        // const image = workbook.addImage({
+        //   base64: await fetch("/static/logo.png")
+        //     .then((res) => res.blob())
+        //     .then(
+        //       (blob) =>
+        //         new Promise((r) => {
+        //           const reader = new FileReader();
+        //           reader.onload = () => r(reader.result);
+        //           reader.readAsDataURL(blob);
+        //         })
+        //     ),
+        //   extension: "png",
+        // });
+        // sheet.addImage(image, "A1:C3"); // posisi logo
+
+        // // Isi tabel dari HTML
+        // const table = document.getElementById("raceTable");
+        // const rows = [];
+        // table.querySelectorAll("tr").forEach((tr) => {
+        //   const row = [];
+        //   tr.querySelectorAll("th, td").forEach((td) =>
+        //     row.push(td.textContent)
+        //   );
+        //   rows.push(row);
+        // });
+        // sheet.addRows(rows);
+
+        // // Simpan file
+        // workbook.xlsx.writeBuffer().then((buffer) => {
+        //   saveAs(new Blob([buffer]), "race_standings_with_logo.xlsx");
+        // });
       }
+
+      // Export table to Excel
+      // function exportTableToExcel() {
+      //   const table = document.getElementById("raceTable");
+      //   const wb = XLSX.utils.table_to_book(table, { sheet: "Race" });
+      //   XLSX.writeFile(
+      //     wb,
+      //     "race_standings_" + localStorage.getItem("selectedCategory") ||
+      //       "" + ".xlsx"
+      //   );
+      // }
 
       // Column visibility
       function renderColumnToggles() {
@@ -394,20 +535,26 @@
             const select = document.getElementById("categorySelect");
             select.innerHTML = "";
             json.categories.forEach((cat) => {
+              console.log(cat);
               const opt = document.createElement("option");
-              opt.value = cat;
-              opt.textContent = cat;
+              opt.value = cat.id;
+              opt.textContent = cat.name;
               select.appendChild(opt);
             });
             // Set selected value from localStorage or default to first
             if (
               selectedCategory &&
-              json.categories.includes(selectedCategory)
+              json.categories.map((c) => c.id).includes(selectedCategory)
             ) {
               select.value = selectedCategory;
+              // Update title
+              document.getElementById("categoryTitle").textContent =
+                select.options[select.selectedIndex].text;
             } else if (json.categories.length > 0) {
-              selectedCategory = json.categories[0];
+              selectedCategory = json.categories[0].id;
               select.value = selectedCategory;
+              document.getElementById("categoryTitle").textContent =
+                select.options[select.selectedIndex].text;
             }
             localStorage.setItem("selectedCategory", selectedCategory);
             fetchRaceData(); // Initial fetch with category
@@ -418,10 +565,10 @@
         fetchCategories();
         document
           .getElementById("categorySelect")
-          .addEventListener("change", function () {
+          .addEventListener("change", function (event) {
             selectedCategory = this.value;
             document.getElementById("categoryTitle").textContent =
-              selectedCategory;
+              this.options[this.selectedIndex].text;
 
             localStorage.setItem("selectedCategory", selectedCategory);
             fetchRaceData();
