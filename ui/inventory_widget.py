@@ -454,12 +454,22 @@ class DatabasePooler:
             conn = self.connect()
             cursor = conn.cursor()
 
-            allowed_minutes = getattr(self.model, "allowed_minutes", 5)  # default 1 jika tidak ada
+            allowed_minutes = getattr(self.model, "allowed_minutes", 5)  # default 5 jika tidak ada
 
             for tag in tags_to_send:
                 try:
                     epc_str = str(hex_readable(tag.data)).replace(" ", "")
                     current_time = tag.timestamp
+
+                    cursor.execute("""
+                        SELECT epc FROM epc
+                        WHERE epc = %s
+                    """, (epc_str,))
+                    epc_cek = cursor.fetchone()
+                    if epc_cek is None :
+                        index = self.model.tags.index(tag)
+                        self.model.remove(index)
+                        continue
                     
                     # Ambil timestamp terakhir untuk EPC ini
                     cursor.execute("""
@@ -475,7 +485,7 @@ class DatabasePooler:
                         WHERE epc = %s
                     """, (epc_str,))
                     count_row = cursor.fetchone()
-                    existing_lap = int(count_row[0]) if count_row and count_row[0] is not None else 0
+                    existing_lap = int(count_row[0]) if count_row is not None and count_row else 0
 
                     cursor.execute("""
                         SELECT b.lap FROM epc 
@@ -494,7 +504,7 @@ class DatabasePooler:
                         diff_minutes = abs((current_time_dt - last_time_dt).total_seconds()) / 60
 
                         """
-                        SIMPAN TIDAK BOLEH JIKA :
+                        TIDAK BOLEH SIMPAN JIKA :
                         1. Selish waktu epc terakhir dengan waktu saat ini lebih dari {allowed_minutes} menit
                         2. Lap yang tercatat lebih dari {allowed_laps} lap
                         """
