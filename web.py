@@ -9,6 +9,7 @@ from datetime import datetime, date, time, timedelta
 import re
 
 import atexit
+import webbrowser
 
 app = Flask(__name__)
 app.secret_key = 'IDLAPS-CHECKPOINT'  # Gantilah dengan secret key yang aman
@@ -407,4 +408,5 @@ def get_categories():
 
 if __name__ == '__main__':
     initialize_database()
+    webbrowser.open("http://127.0.0.1:5000/")
     app.run(debug=False)

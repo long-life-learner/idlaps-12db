@@ -260,7 +260,7 @@
     </div>
 
     <script>
-      let raceStartTime = null;
+      let raceStartTime = localStorage.getItem("startTime") || null;
       let totalLap = Number(localStorage.getItem("totalLap")) || 10;
       let prevPositions = {};
       let prevOrder = {};
@@ -292,12 +292,17 @@
       function setStartTimeFromSidebar() {
         const val = document.getElementById("sidebarStartTime").value;
         raceStartTime = val;
+
+        
+        localStorage.setItem("startTime", raceStartTime);
         document.getElementById("displayStartTime").textContent =
-          val || "00:00:00";
+        localStorage.getItem("startTime") || "00:00:00";
+          
         // Total lap
         const lapVal =
           Number(document.getElementById("totalLapInput").value) || 1;
         totalLap = lapVal;
+
         localStorage.setItem("totalLap", totalLap);
         document.getElementById("displayTotalLap").textContent = totalLap;
         resetElapsedTimer();
@@ -535,7 +540,6 @@
             const select = document.getElementById("categorySelect");
             select.innerHTML = "";
             json.categories.forEach((cat) => {
-              console.log(cat);
               const opt = document.createElement("option");
               opt.value = cat.id;
               opt.textContent = cat.name;
@@ -653,6 +657,7 @@
           document.getElementById("displayStartTime").textContent =
             this.value || "00:00:00";
           raceStartTime = this.value;
+          localStorage.setItem("startTime", raceStartTime);
           resetElapsedTimer();
         });
 
@@ -667,8 +672,11 @@
         });
 
       // Initial display
-      document.getElementById("displayStartTime").textContent =
-        document.getElementById("sidebarStartTime").value;
+      document.getElementById("displayStartTime").textContent =raceStartTime;
+      document.getElementById("sidebarStartTime").value = raceStartTime;
+      // document.getElementById("displayStartTime").textContent =
+      //   localStorage.getItem('startTime') || document.getElementById("sidebarStartTime").value;
+
       document.getElementById("totalLapInput").value = totalLap;
       document.getElementById("displayTotalLap").textContent = totalLap;
 

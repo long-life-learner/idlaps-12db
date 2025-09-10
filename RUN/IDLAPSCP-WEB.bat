@@ -4,7 +4,7 @@
 cd %HOMEPATH%
 
 :: Pindah ke folder IDLAPS CHECKPOINT
-cd "IDLAPS CHECKPOINT"
+cd "IDLAPS CHECKPOINT V1"
 
 :: Periksa apakah Python tersedia di PATH
 python --version >nul 2>&1

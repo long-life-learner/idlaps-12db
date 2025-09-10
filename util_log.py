@@ -24,7 +24,7 @@ def setup_logging():
     rotating_handler.setFormatter(logging.Formatter(
         '%(asctime)s %(name)s %(levelname)s %(threadName)s %(message)s'
     ))
-    logging.basicConfig(level=logging.DEBUG, handlers=[console, rotating_handler])
+    logging.basicConfig(level=logging.DEBUG, handlers=[console])
     sys.excepthook = handle_exception
 
 
