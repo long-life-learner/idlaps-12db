@@ -329,87 +329,6 @@
         </tbody>
       </table>
     </div>
-<<<<<<< HEAD
-
-    <script>
-      let raceStartTime = localStorage.getItem("startTime") || null;
-      let totalLap = Number(localStorage.getItem("totalLap")) || 10;
-      let prevPositions = {};
-      let prevOrder = {};
-      let timerInterval = null;
-      let elapsedInterval = null;
-      const columnList = [
-        { key: "position", label: "Pos" },
-        { key: "bib_number", label: "BIB" },
-        { key: "name", label: "Nama" },
-        { key: "team", label: "Tim" },
-        { key: "lap_count", label: "Lap" },
-        { key: "last_lap", label: "Last Lap" },
-        { key: "total_time", label: "Total Time" },
-        { key: "gap", label: "Gap" },
-      ];
-      let visibleColumns =
-        JSON.parse(localStorage.getItem("visibleColumns") || "null") ||
-        columnList.map((c) => c.key);
-
-      // Sidebar functions
-      function openSidebar() {
-        document.getElementById("mySidebar").style.width = "300px";
-      }
-      function closeSidebar() {
-        document.getElementById("mySidebar").style.width = "0";
-      }
-
-      // Set start time and total lap from sidebar
-      function setStartTimeFromSidebar() {
-        const val = document.getElementById("sidebarStartTime").value;
-        raceStartTime = val;
-
-        
-        localStorage.setItem("startTime", raceStartTime);
-        document.getElementById("displayStartTime").textContent =
-        localStorage.getItem("startTime") || "00:00:00";
-          
-        // Total lap
-        const lapVal =
-          Number(document.getElementById("totalLapInput").value) || 1;
-        totalLap = lapVal;
-
-        localStorage.setItem("totalLap", totalLap);
-        document.getElementById("displayTotalLap").textContent = totalLap;
-        resetElapsedTimer();
-        updateLapToGo();
-      }
-
-      async function exportTableWithLogo() {
-        const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet("Race");
-        // === 1. Tambah Logo ===
-        const image = workbook.addImage({
-          base64: await fetch("/static/logo.png")
-            .then((res) => res.blob())
-            .then(
-              (blob) =>
-                new Promise((r) => {
-                  const reader = new FileReader();
-                  reader.onload = () => r(reader.result);
-                  reader.readAsDataURL(blob);
-                })
-            ),
-          extension: "png",
-        });
-        sheet.addImage(image, "A1:H3"); // posisi logo
-
-        // === 2. Ambil Data Tabel HTML ===
-        const table = document.getElementById("raceTable");
-        const rows = [];
-        table.querySelectorAll("tr").forEach((tr) => {
-          const row = [];
-          tr.querySelectorAll("th, td").forEach((td) =>
-            row.push(td.textContent.trim())
-          );
-          rows.push(row);
-=======
   </div>
 
   <script>
@@ -466,7 +385,6 @@
         tr.querySelectorAll("th, td").forEach((td) => {
           // Skip hidden columns
           if (td.style.display !== 'none') row.push(td.textContent.trim());
->>>>>>> 97463ee (offline mode dengan psql)
         });
         if (row.length > 0) rows.push(row);
       });
@@ -561,38 +479,6 @@
         localStorage.setItem("selectedCategory", selectedCategory);
         fetchRaceData();
       });
-<<<<<<< HEAD
-
-      let selectedCategory = localStorage.getItem("selectedCategory") || "";
-
-      // Fetch categories from backend and populate select box
-      function fetchCategories() {
-        fetch("/categories")
-          .then((res) => res.json())
-          .then((json) => {
-            const select = document.getElementById("categorySelect");
-            select.innerHTML = "";
-            json.categories.forEach((cat) => {
-              const opt = document.createElement("option");
-              opt.value = cat.id;
-              opt.textContent = cat.name;
-              select.appendChild(opt);
-            });
-            // Set selected value from localStorage or default to first
-            if (
-              selectedCategory &&
-              json.categories.map((c) => c.id).includes(selectedCategory)
-            ) {
-              select.value = selectedCategory;
-              // Update title
-              document.getElementById("categoryTitle").textContent =
-                select.options[select.selectedIndex].text;
-            } else if (json.categories.length > 0) {
-              selectedCategory = json.categories[0].id;
-              select.value = selectedCategory;
-              document.getElementById("categoryTitle").textContent =
-                select.options[select.selectedIndex].text;
-=======
     }
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -626,7 +512,6 @@
             if (bib && prevOrder[bib] !== undefined && prevOrder[bib] !== newOrder[bib]) {
               if (prevOrder[bib] > newOrder[bib]) { tr.classList.add("row-up"); setTimeout(() => tr.classList.remove("row-up"), 700); }
               else if (prevOrder[bib] < newOrder[bib]) { tr.classList.add("row-down"); setTimeout(() => tr.classList.remove("row-down"), 700); }
->>>>>>> 97463ee (offline mode dengan psql)
             }
           });
 
@@ -648,22 +533,10 @@
             tbody.appendChild(tr);
           });
 
-<<<<<<< HEAD
-      // Sync sidebar start time input with display
-      document
-        .getElementById("sidebarStartTime")
-        .addEventListener("input", function () {
-          document.getElementById("displayStartTime").textContent =
-            this.value || "00:00:00";
-          raceStartTime = this.value;
-          localStorage.setItem("startTime", raceStartTime);
-          resetElapsedTimer();
-=======
           prevOrder = {};
           newRows.forEach((row, idx) => { prevOrder[row.bib_number] = idx; });
           updateColumnVisibility();
           updateLapToGo(newRows);
->>>>>>> 97463ee (offline mode dengan psql)
         });
     }
 
@@ -672,19 +545,9 @@
       raceStartTime = this.value; resetElapsedTimer();
     });
 
-<<<<<<< HEAD
-      // Initial display
-      document.getElementById("displayStartTime").textContent =raceStartTime;
-      document.getElementById("sidebarStartTime").value = raceStartTime;
-      // document.getElementById("displayStartTime").textContent =
-      //   localStorage.getItem('startTime') || document.getElementById("sidebarStartTime").value;
-
-      document.getElementById("totalLapInput").value = totalLap;
-=======
     document.getElementById("totalLapInput").addEventListener("input", function () {
       totalLap = Number(this.value) || 1;
       localStorage.setItem("totalLap", totalLap);
->>>>>>> 97463ee (offline mode dengan psql)
       document.getElementById("displayTotalLap").textContent = totalLap;
       updateLapToGo();
     });

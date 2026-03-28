@@ -86,8 +86,8 @@ class Main:
         self.reader = Reader()    
 
         # Tampilkan MainWidget langsung
-        self.main_widget = MainWidget(self.reader)
-        self.main_widget.show()
+        # self.main_widget = MainWidget(self.reader)
+        # self.main_widget.show()
 
         sys.exit(app.exec())
 
