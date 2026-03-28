@@ -1,4 +1,5 @@
 import sys
+import os
 import threading
 from logging import getLogger
 
@@ -12,7 +13,7 @@ from ui.main_widget import MainWidget
 from ui.utils import pyinstaller_resource_path
 from util_log import setup_logging
 from ui.thread.inventory_thread import InventoryThread
-from web import initialize_database, start_web_server
+# web.py di-import nanti secara *deferred* setelah DatabaseDialog berteguh.
 
 
 logger = getLogger()
@@ -45,27 +46,19 @@ class Main:
         self.connect_widget = None
         self.main_widget.show()
 
-    def start(self) -> None:
+    def start(self, app: QApplication) -> None:
         logger.info("Main() > start()")
-        app = QApplication(sys.argv)
-
-        # 1. Pre-requisite Warning
-        msg = QMessageBox()
-        msg.setWindowTitle("Pre-requisites / To-Do List")
-        msg.setText("<b>Sebelum melanjutkan, pastikan Anda telah memenuhi persyaratan berikut:</b><br><br>"
-                    "1. PC ini harus terhubung dengan database PostgreSQL 17. Unduh di: <a href='https://www.postgresql.org/download/'>Link PostgreSQL</a><br>"
-                    "2. Matikan fitur 'Sleep Mode' pada pengaturan daya/power PC Anda.<br>"
-                    "3. Pastikan PC Anda terhubung dengan Internet atau jaringan LAN yang benar.")
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setTextFormat(Qt.TextFormat.RichText)
-        msg.exec()
+        
+        # Defer import web.py agar membaca os.environ yang baru di-inject dari DatabaseDialog
+        from web import initialize_database, start_web_server        
+        
 
         # 2. Initialize Database check
         db_success, db_msg = initialize_database()
         if not db_success:
             err_msg = QMessageBox()
             err_msg.setWindowTitle("Database Error")
-            err_msg.setText(f"Gagal menghubungkan atau menginisialisasi database PostgreSQL.<br><br>Pesan Error: {db_msg}<br><br>Harap pastikan PostgreSQL menyala dan tersambung ke jaringan.")
+            err_msg.setText(f"Gagal menghubungkan atau menginisialisasi tabel database PostgreSQL.<br><br>Pesan Error: {db_msg}")
             err_msg.setIcon(QMessageBox.Icon.Critical)
             err_msg.exec()
             sys.exit(1)
@@ -92,7 +85,44 @@ class Main:
         sys.exit(app.exec())
 
 
+def get_external_env_path():
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(sys.executable)
+    else:
+        application_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(application_path, ".env.production")
+
 if __name__ == "__main__":
-    load_dotenv(dotenv_path=pyinstaller_resource_path(".env.production"))
+    external_env = get_external_env_path()
+    
+    # 1. Selalu muat cadangan bawaan (bundled) terlebih dahulu agar variabel vital tidak None
+    load_dotenv(dotenv_path=pyinstaller_resource_path(".env.production"), override=False)
+
+    # 2. Jika ada opsi eksternal (.env.production di sebelah exe), itu akan menimpa (override) bawaan
+    if os.path.exists(external_env):
+        load_dotenv(dotenv_path=external_env, override=True)
+
     setup_logging()
-    Main().start()
+    
+    app = QApplication(sys.argv)
+    from ui.database_dialog import DatabaseDialog
+    
+    # 1. Munculkan Form Konfigurasi Database terlebih dahulu!# 1. Pre-requisite Warning
+    msg = QMessageBox()
+    msg.setWindowTitle("Pre-requisites / To-Do List")
+    msg.setText("<b>Sebelum melanjutkan, pastikan Anda telah memenuhi persyaratan berikut:</b><br><br>"
+                "1. PC ini harus terhubung dengan database PostgreSQL 17. Unduh di: <a href='https://www.postgresql.org/download/'>Link PostgreSQL</a><br>"
+                "2. Matikan fitur 'Sleep Mode' pada pengaturan daya/power PC Anda.<br>"
+                "3. Pastikan PC Anda terhubung dengan Internet atau jaringan LAN yang benar.")
+    msg.setIcon(QMessageBox.Icon.Information)
+    msg.setTextFormat(Qt.TextFormat.RichText)
+    msg.exec()
+    dialog = DatabaseDialog(env_path=external_env)
+    
+    if dialog.exec() == DatabaseDialog.DialogCode.Accepted:
+        # 2. Lanjut masuk ke aplikasi
+        app_core = Main()
+        app_core.start(app)
+    else:
+        # Jika batal / close
+        sys.exit(0)

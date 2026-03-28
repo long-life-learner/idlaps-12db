@@ -55,8 +55,13 @@ def bytes_to_icon(value: bytes) -> QIcon:
 
 
 def set_widget_style(widget: QWidget) -> None:
-    # Icon
-    widget.setWindowIcon(bytes_to_icon(os.getenv('APP_ICON_BASE64').encode()))
+    # Icon (Safe Fallback)
+    try:
+        icon_b64 = os.getenv('APP_ICON_BASE64')
+        if icon_b64:
+            widget.setWindowIcon(bytes_to_icon(icon_b64.encode()))
+    except Exception:
+        pass
 
     # Fix window size
     widget.setWindowFlag(Qt.MSWindowsFixedSizeDialogHint)
