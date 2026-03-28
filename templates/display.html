@@ -1,343 +1,294 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Data Display</title>
-    <style>
-      table {
-        border-collapse: collapse;
-        background-color: #ffffff;
-        overflow: hidden;
-        width: 500px;
-        border-radius: 10px;
-      }
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>IDLAPS - Database Log</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .time-cell {
+      cursor: pointer;
+      display: inline-block;
+      min-width: 140px;
+    }
+    .time-cell:hover {
+      color: var(--primary-color);
+      text-decoration: underline;
+    }
+    .btn-save { background: var(--primary-color); }
+    .btn-cancel { background: var(--text-secondary); }
+    .btn-delete { background: var(--danger-color); }
+    
+    td input[type="text"] {
+      padding: 0.4rem;
+      border: 2px solid var(--primary-color);
+      border-radius: var(--radius-md);
+      font-size: 1rem;
+      font-family: inherit;
+      outline: none;
+    }
+  </style>
 
-      th,
-      td {
-        font-family: "Motnserrat", sans-serif;
-        text-align: left;
-        font-size: 24px;
-        padding: 10px;
-      }
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver"></script>
 
-      th {
-        background-color: green;
-        color: white;
-        position: sticky;
-      }
-      .btn {
-        border: none;
-        border-radius: 5px;
-        padding: 5px 8px;
-        cursor: pointer;
-        color: #fff;
-        margin-left: 4px;
-      }
-      .btn-save {
-        background: blue;
-      }
-      .btn-cancel {
-        background: gray;
-      }
-      .btn-delete {
-        background: red;
-      }
-    </style>
-    <script>
-      let fetchInterval = null;
-      let resumeTimeout = null;
+  <script>
+    let fetchInterval = null;
+    let resumeTimeout = null;
 
-      function startFetching() {
-        if (!fetchInterval) {
-          fetchInterval = setInterval(fetchData, 5000);
+    function startFetching() {
+      if (!fetchInterval) {
+        fetchInterval = setInterval(fetchData, 5000);
+      }
+    }
+
+    function stopFetching() {
+      if (fetchInterval) {
+        clearInterval(fetchInterval);
+        fetchInterval = null;
+      }
+    }
+
+    function filterTable() {
+      const input = document.getElementById("searchInput");
+      const filter = input.value.toUpperCase();
+      const table = document.getElementById("exTable");
+      const tr = table.getElementsByTagName("tr");
+      // Stop fetch saat user mengetik
+      stopFetching();
+      clearTimeout(resumeTimeout);
+      for (let i = 1; i < tr.length; i++) {
+        const td = tr[i].getElementsByTagName("td")[0];
+        if (td) {
+          const textValue = td.textContent || td.innerText;
+          tr[i].style.display =
+            textValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
         }
       }
-
-      function stopFetching() {
-        if (fetchInterval) {
-          clearInterval(fetchInterval);
-          fetchInterval = null;
-        }
-      }
-
-      function filterTable() {
-        const input = document.getElementById("searchInput");
-        const filter = input.value.toUpperCase();
-        const table = document.getElementById("exTable");
-        const tr = table.getElementsByTagName("tr");
-        // Stop fetch saat user mengetik
-        stopFetching();
-        clearTimeout(resumeTimeout);
-        for (let i = 1; i < tr.length; i++) {
-          const td = tr[i].getElementsByTagName("td")[0];
-          if (td) {
-            const textValue = td.textContent || td.innerText;
-            tr[i].style.display =
-              textValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
-          }
-        }
-        // Lanjutkan fetchData setelah 3 detik tidak mengetik
-        resumeTimeout = setTimeout(() => {
-          startFetching();
-        }, 3000);
-      }
-
-      async function fetchData() {
-        const response = await fetch("/data");
-        let data = await response.json();
-        const total_bib = data.total_bib;
-        data = data.data;
-        const tableBody = document.getElementById("data-body");
-        tableBody.innerHTML = "";
-        data.forEach((row) => {
-          const tr = document.createElement("tr");
-          tr.id = `row-${row.id}`;
-          tr.innerHTML = `
-      <td>${row.bib_number}</td>
-      <td class="time-cell" onclick="makeEditable(this, ${row.id})">
-        <span class="time-text">${row.timestamp}</span>
-      </td>
-      <td>
-        <button class="btn btn-save" id="save-${row.id}" onclick="saveEdit(${row.id})" disabled>Simpan</button>
-        <button class="btn btn-cancel" id="cancel-${row.id}" onclick="cancelEdit(${row.id})" style="display:none">Batal</button>
-        <button class="btn btn-delete" onclick="deleteRow(${row.id})">Hapus</button>
-      </td>`;
-          tableBody.appendChild(tr);
-        });
-        const total_bib_el = document.getElementById("total_bib");
-        total_bib_el.innerHTML = total_bib;
-      }
-
-      const TIME_REGEX = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}$/;
-
-      function makeEditable(td, id) {
-        // Cegah re-init saat sudah ada input
-        if (td.querySelector("input")) return;
-
-        stopFetching(); // supaya polling tidak nge-refresh saat user sedang edit
-
-        const span = td.querySelector(".time-text");
-        const oldValue = span ? span.textContent.trim() : "";
-        td.dataset.oldValue = oldValue; // simpan untuk tombol Batal
-
-        // Ganti span -> input, jangan menyentuh kolom aksi
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = oldValue;
-        input.className = "time-cell";
-        input.placeholder = "HH:MM:SS.mmm";
-        input.pattern = TIME_REGEX.source;
-        input.style.width = "140px";
-
-        // Enter = simpan, Esc = batal
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") saveEdit(id);
-          if (e.key === "Escape") cancelEdit(id);
-        });
-
-        // Ganti konten span dengan input
-        td.innerHTML = "";
-        td.appendChild(input);
-        input.focus();
-        input.select();
-
-        // Tampilkan tombol Batal & aktifkan Simpan
-        document.getElementById(`cancel-${id}`).style.display = "";
-        const saveBtn = document.getElementById(`save-${id}`);
-        saveBtn.disabled = false;
-      }
-
-      function cancelEdit(id) {
-        const row = document.getElementById(`row-${id}`);
-        console.log(`row-${id}`);
-        const td = row.querySelector(".time-cell");
-        const oldValue = td.dataset.oldValue || "";
-        td.innerHTML = `<span class="time-text">${oldValue}</span>`;
-
-        document.getElementById(`cancel-${id}`).style.display = "none";
-        document.getElementById(`save-${id}`).disabled = true;
-
+      // Lanjutkan fetchData setelah 3 detik tidak mengetik
+      resumeTimeout = setTimeout(() => {
         startFetching();
+      }, 3000);
+    }
+
+    async function fetchData() {
+      const response = await fetch("/data");
+      let data = await response.json();
+      const total_bib = data.total_bib;
+      data = data.data;
+      const tableBody = document.getElementById("data-body");
+      tableBody.innerHTML = "";
+      data.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.id = `row-${row.id}`;
+        tr.innerHTML = `
+    <td><strong>${row.bib_number}</strong></td>
+    <td class="time-cell" onclick="makeEditable(this, ${row.id})">
+      <span class="time-text">${row.timestamp}</span>
+      <i class="fa-solid fa-pen" style="font-size: 0.6em; color: var(--text-secondary); margin-left: 5px;"></i>
+    </td>
+    <td>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" id="save-${row.id}" onclick="saveEdit(${row.id})" disabled><i class="fa-solid fa-check"></i></button>
+        <button class="btn" style="background-color: var(--text-secondary); color: white;" id="cancel-${row.id}" onclick="cancelEdit(${row.id})" style="display:none"><i class="fa-solid fa-xmark"></i></button>
+        <button class="btn btn-danger" onclick="deleteRow(${row.id})"><i class="fa-solid fa-trash-can"></i></button>
+      </div>
+    </td>`;
+        tableBody.appendChild(tr);
+        document.getElementById(`cancel-${row.id}`).style.display = "none";
+      });
+      const total_bib_el = document.getElementById("total_bib");
+      total_bib_el.innerHTML = total_bib;
+    }
+
+    const TIME_REGEX = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}$/;
+
+    function makeEditable(td, id) {
+      if (td.querySelector("input")) return;
+
+      stopFetching(); 
+
+      const span = td.querySelector(".time-text");
+      const oldValue = span ? span.textContent.trim() : "";
+      td.dataset.oldValue = oldValue; 
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = oldValue;
+      input.className = "time-cell-edit";
+      input.placeholder = "HH:MM:SS.mmm";
+      input.pattern = TIME_REGEX.source;
+      input.style.width = "150px";
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveEdit(id);
+        if (e.key === "Escape") cancelEdit(id);
+      });
+
+      td.innerHTML = "";
+      td.appendChild(input);
+      input.focus();
+      input.select();
+
+      document.getElementById(`cancel-${id}`).style.display = "inline-flex";
+      const saveBtn = document.getElementById(`save-${id}`);
+      saveBtn.disabled = false;
+    }
+
+    function cancelEdit(id) {
+      const row = document.getElementById(`row-${id}`);
+      const td = row.querySelector(".time-cell");
+      const oldValue = td.dataset.oldValue || "";
+      td.innerHTML = `<span class="time-text">${oldValue}</span> <i class="fa-solid fa-pen" style="font-size: 0.6em; color: var(--text-secondary); margin-left: 5px;"></i>`;
+
+      document.getElementById(`cancel-${id}`).style.display = "none";
+      document.getElementById(`save-${id}`).disabled = true;
+
+      startFetching();
+    }
+
+    function saveEdit(id) {
+      const row = document.getElementById(`row-${id}`);
+      const td = row.querySelector(".time-cell");
+      const input = td.querySelector(".time-cell-edit");
+
+      if (!input) return; 
+      const newValue = (input.value || "").trim();
+
+      if (!TIME_REGEX.test(newValue)) {
+        alert("Format waktu harus HH:MM:SS.mmm, contoh: 22:51:52.968");
+        input.focus();
+        return;
       }
 
-      function saveEdit(id) {
-        const row = document.getElementById(`row-${id}`);
-        const td = row.querySelector(".time-cell");
-        const input = td.querySelector(".time-cell");
-
-        if (!input) return; // belum dalam mode edit
-        const newValue = (input.value || "").trim();
-
-        // Validasi format HH:MM:SS.mmm
-        if (!TIME_REGEX.test(newValue)) {
-          alert("Format waktu harus HH:MM:SS.mmm, contoh: 22:51:52.968");
-          input.focus();
-          return;
-        }
-
-        fetch(`/update/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ timestamp: newValue }),
+      fetch(`/update/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timestamp: newValue }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.error) {
+            alert("Gagal: " + data.error);
+            return;
+          }
+          td.innerHTML = `<span class="time-text">${newValue}</span> <i class="fa-solid fa-pen" style="font-size: 0.6em; color: var(--text-secondary); margin-left: 5px;"></i>`;
+          document.getElementById(`cancel-${id}`).style.display = "none";
+          document.getElementById(`save-${id}`).disabled = true;
+          startFetching();
         })
-          .then((res) => res.json())
+        .catch((err) => alert("Terjadi kesalahan: " + err));
+    }
+    
+    function deleteRow(id) {
+      if (confirm("Yakin ingin menghapus data log hitungan ini?")) {
+        fetch(`/delete/${id}`, { method: "DELETE" })
+          .then((response) => response.json())
           .then((data) => {
-            if (data.error) {
+            if (data.message) {
+              fetchData(); 
+            } else if (data.error) {
               alert("Gagal: " + data.error);
-              return;
             }
-            // Berhasil -> tampilkan teks & reset tombol
-            td.innerHTML = `<span class="time-text">${newValue}</span>`;
-            document.getElementById(`cancel-${id}`).style.display = "none";
-            document.getElementById(`save-${id}`).disabled = true;
-
-            // Refresh baris via fetchData jika mau (opsional). Di sini cukup lanjutkan polling:
-            startFetching();
           })
           .catch((err) => alert("Terjadi kesalahan: " + err));
       }
-      function deleteRow(id) {
-        if (confirm("Yakin ingin menghapus data ini?")) {
-          fetch(`/delete/${id}`, { method: "DELETE" })
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.message) {
-                alert(data.message);
-                fetchData(); // refresh tabel
-              } else if (data.error) {
-                alert("Gagal: " + data.error);
-              }
-            })
-            .catch((err) => alert("Terjadi kesalahan: " + err));
-        }
+    }
+    
+    window.onload = () => {
+      fetchData();
+      startFetching();
+    };
+
+    function clearData(endpoint, confirmMessage) {
+      if (confirm(confirmMessage)) {
+        fetch(endpoint)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.message) {
+              alert(data.message);
+            } else if (data.error) {
+              alert("Gagal menghapus data: " + data.error);
+            }
+            location.reload(); 
+          })
+          .catch((error) => {
+            alert("Terjadi kesalahan: " + error);
+          });
       }
-      // Mulai fetch otomatis saat halaman dimuat
-      window.onload = () => {
-        fetchData();
-        startFetching();
-      };
-    </script>
-    <script>
-      function clearData(endpoint, confirmMessage) {
-        if (confirm(confirmMessage)) {
-          fetch(endpoint)
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.message) {
-                alert(data.message);
-              } else if (data.error) {
-                alert("Gagal menghapus data: " + data.error);
-              }
-              location.reload(); // refresh halaman setelah penghapusan
-            })
-            .catch((error) => {
-              alert("Terjadi kesalahan: " + error);
-            });
-        }
-        return false; // cegah default href
-      }
-    </script>
+      return false; 
+    }
+  </script>
+</head>
 
-    <style>
-      body {
-        font-family: Verdana, Geneva, Tahoma, sans-serif;
-      }
-    </style>
-  </head>
-  <body
-    style="
-      margin: 0 auto;
-      background-color: beige;
-      text-align: center;
-      padding: 10px;
-    "
-  >
-    <a href="./upload">Upload Data EPC</a>
-    <br />
-    <br />
-    <div style="position: sticky; top: 10px">
-      <h4 style="display: inline; font-size: 20px" id="total_bib">0</h4>
+<body>
+  <div class="container">
+    
+    <div class="toolbar justify-between">
+      <div class="flex items-center gap-3">
+        <a href="/" class="btn" style="background-color: var(--border-color); color: var(--text-primary);"><i class="fa-solid fa-house"></i></a>
+        <h2 style="margin: 0; font-size: 1.5rem;"><i class="fa-solid fa-database" style="color: var(--primary-color);"></i> Database Log Mentahan (Raw)</h2>
+      </div>
+      <div>
+        <a href="/upload" class="btn btn-outline"><i class="fa-solid fa-cloud-arrow-up"></i> Upload EPC</a>
+      </div>
+    </div>
+    
+    <!-- Action Bar -->
+    <div class="toolbar justify-between">
+      
+      <div class="flex items-center gap-3">
+        <div style="background: var(--bg-color); border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: var(--radius-lg); font-weight: 500;">
+          <i class="fa-solid fa-users" style="color: var(--text-secondary); margin-right: 5px;"></i> Total Bib Aktif: <strong id="total_bib" style="color: var(--primary-color); font-size: 1.2rem;">0</strong>
+        </div>
+        
+        <div style="position: relative;">
+          <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 12px; color: var(--text-secondary);"></i>
+          <input
+            type="text"
+            id="searchInput"
+            class="form-control"
+            style="padding-left: 35px; min-width: 250px;"
+            onkeyup="filterTable()"
+            placeholder="Cari nomor BIB peserta..."
+          />
+        </div>
+      </div>
+      
+      <div class="flex gap-2">
+        <button class="btn btn-success" onclick="exportToExcel('exTable')">
+          <i class="fa-solid fa-download"></i> Export Excel
+        </button>
 
-      <input
-        type="button"
-        value="Export"
-        style="
-          color: white;
-          background-color: green;
-          margin-bottom: 5px;
-          min-height: 24px;
-          padding: 10px;
-          border-radius: 8px;
-          cursor: pointer;
-          font-size: 16px;
-        "
-        onclick="exportToExcel('exTable')"
-      />
-
-      <input
-        type="text"
-        id="searchInput"
-        style="
-          min-height: 24px;
-          font-size: 16px;
-          padding: 5px;
-          border-radius: 8px;
-        "
-        onkeyup="filterTable()"
-        placeholder="Search by BIB number..."
-      />
-      <a
-        style="
-          margin-bottom: 5px;
-          min-height: 24px;
-          padding: 10px;
-
-          border-radius: 8px;
-          cursor: pointer;
-          list-style: none;
-          display: inline;
-          background-color: red;
-          color: white;
-          text-decoration: none;
-
-          font-size: 16px;
-        "
-        href="#"
-        onclick="return clearData('/clear_data', 'Anda yakin ingin hapus EPC dan Inventory?')"
-        >Hapus EPC dan Inventory</a
-      >
-      <a
-        style="
-          margin-bottom: 5px;
-          min-height: 24px;
-          padding: 10px;
-
-          border-radius: 8px;
-          cursor: pointer;
-          list-style: none;
-          display: inline;
-          background-color: red;
-          color: white;
-          text-decoration: none;
-
-          font-size: 16px;
-        "
-        href="#"
-        onclick="return clearData('/clear_inv', 'Anda yakin ingin hapus Inventory saja?')"
-        >Hapus Inventory Saja</a
-      >
+        <a class="btn btn-danger" href="#" onclick="return clearData('/clear_inv', 'Tindakan ini permanen. Anda yakin ingin mereset Log Hasil Inventory Saja?')">
+          <i class="fa-solid fa-trash-can"></i> Reset Inventory
+        </a>
+        
+        <a class="btn" style="background-color: #7f1d1d; color: white;" href="#" onclick="return clearData('/clear_data', 'Peringatan Extrim: Anda yakin ingin menghapus data EPC pembalap sekaligus hasil Inventory log?')">
+          <i class="fa-solid fa-triangle-exclamation"></i> Format Kasar
+        </a>
+      </div>
     </div>
 
-    <table border="3" id="exTable" style="margin: 0 auto">
-      <thead>
-        <tr>
-          <th>BIB</th>
-          <th>Waktu</th>
-          <th>Aksi</th>
-        </tr>
-      </thead>
+    <!-- Table -->
+    <div class="table-container">
+      <table id="exTable">
+        <thead>
+          <tr>
+            <th style="width: 20%;"><i class="fa-solid fa-hashtag"></i> Nomor BIB</th>
+            <th style="width: 50%;"><i class="fa-solid fa-clock"></i> Waktu Perekaman (Ketuk utuk Edit)</th>
+            <th style="width: 30%; text-align: center;"><i class="fa-solid fa-wrench"></i> Aksi Khusus</th>
+          </tr>
+        </thead>
+        <tbody id="data-body">
+          <!-- Render via JS -->
+        </tbody>
+      </table>
+    </div>
 
-      <tbody id="data-body"></tbody>
-    </table>
-    <script src="static/exportToExcel.js" defer></script>
-  </body>
+  </div>
+  
+  <script src="/static/exportToExcel.js"></script>
+</body>
 </html>

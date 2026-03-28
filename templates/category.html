@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>IDLAPS - Manajemen Kategori</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    
+    <style>
+        .edit-input {
+            width: 100%;
+            padding: 0.5rem;
+            border: 2px solid var(--primary-color);
+            border-radius: var(--radius-md);
+            font-family: inherit;
+        }
+        .action-btns {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-start;
+        }
+        .add-row {
+            background-color: rgba(37, 99, 235, 0.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 900px;">
+        <!-- Top Toolbar -->
+        <div class="toolbar justify-between">
+            <div class="flex items-center gap-3">
+                <a href="/" class="btn btn-outline" style="border-color: var(--border-color); color: var(--text-primary);">
+                    <i class="fa-solid fa-house"></i>
+                </a>
+                <h2 style="margin: 0; font-size: 1.5rem;">
+                    <i class="fa-solid fa-layer-group" style="color: #8b5cf6;"></i> Manajemen Kategori
+                </h2>
+            </div>
+            <div>
+                <a href="/upload" class="btn btn-success">
+                    <i class="fa-solid fa-file-excel"></i> Sinkronisasi via File Excel
+                </a>
+            </div>
+        </div>
+
+        <div id="toast-container" class="toast-container"></div>
+
+        <!-- Formulir Tambah Kategori -->
+        <div class="card mb-3" style="align-items: flex-start; text-align: left; padding: 1.5rem;">
+            <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-plus-circle" style="color: var(--primary-color);"></i> Tambah Kategori Kustom</h3>
+            <form id="addCategoryForm" class="flex gap-3" style="width: 100%; align-items: flex-end;" onsubmit="createCategory(event)">
+                <div style="flex: 2;">
+                    <label style="font-size: 0.9rem; font-weight: 500; color: var(--text-secondary);">Nama Kelas / Kategori</label>
+                    <input type="text" id="newName" class="form-control mt-1" placeholder="Contoh: Men Elite" required>
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 0.9rem; font-weight: 500; color: var(--text-secondary);">Target Putaran (Lap)</label>
+                    <input type="number" id="newLap" class="form-control mt-1" min="1" value="10" required>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary" style="height: 46px;"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Tabel Daftar Kategori -->
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 10%;">ID</th>
+                        <th style="width: 50%;">Nama Kategori (Kelas)</th>
+                        <th style="width: 20%;">Target Lap</th>
+                        <th style="width: 20%;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="cat-body">
+                    <tr><td colspan="4" class="text-center">Memuat data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function showToast(message, type="success") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        async function loadCategories() {
+            try {
+                const res = await fetch('/categories');
+                const data = await res.json();
+                const tbody = document.getElementById('cat-body');
+                tbody.innerHTML = '';
+
+                if(data.categories.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Belum ada kategori terdaftar. Silakan tambah manual atau unggah excel.</td></tr>';
+                    return;
+                }
+
+                data.categories.forEach(cat => {
+                    const tr = document.createElement('tr');
+                    tr.id = `row-${cat.id}`;
+                    tr.innerHTML = `
+                        <td style="font-weight: 600; color: var(--text-secondary);">#${cat.id}</td>
+                        <td class="cat-name">${cat.name}</td>
+                        <td class="cat-lap">${cat.lap} Lap</td>
+                        <td class="action-btns">
+                            <button class="btn btn-primary btn-sm" onclick="editMode(${cat.id}, '${cat.name.replace(/'/g, "\\'")}', ${cat.lap})" style="padding: 0.4rem 0.8rem;"><i class="fa-solid fa-pen"></i></button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteCategory(${cat.id})" style="padding: 0.4rem 0.8rem;"><i class="fa-solid fa-trash-can"></i></button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                showToast("Gagal memuat data dari server.", "error");
+            }
+        }
+
+        function editMode(id, oldName, oldLap) {
+            const tr = document.getElementById(`row-${id}`);
+            tr.innerHTML = `
+                <td style="font-weight: 600; color: var(--text-secondary);">#${id}</td>
+                <td><input type="text" id="edit-name-${id}" class="edit-input" value="${oldName}"></td>
+                <td><input type="number" id="edit-lap-${id}" class="edit-input" value="${oldLap}" min="1"></td>
+                <td class="action-btns">
+                    <button class="btn btn-success btn-sm" onclick="saveEdit(${id})" style="padding: 0.4rem 0.8rem;"><i class="fa-solid fa-check"></i></button>
+                    <button class="btn" onclick="loadCategories()" style="background: var(--text-secondary); color:white; padding: 0.4rem 0.8rem;"><i class="fa-solid fa-xmark"></i></button>
+                </td>
+            `;
+        }
+
+        async function saveEdit(id) {
+            const newName = document.getElementById(`edit-name-${id}`).value;
+            const newLap = document.getElementById(`edit-lap-${id}`).value;
+
+            if(!newName.trim() || !newLap) return alert("Jangan kosongkan kolom.");
+
+            try {
+                const res = await fetch(`/api/category/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName, lap: newLap })
+                });
+                const data = await res.json();
+                
+                if(!res.ok) throw new Error(data.error || "Gagal perbarui data");
+                
+                showToast(data.message, "success");
+                loadCategories();
+            } catch (err) {
+                showToast(err.message, "error");
+            }
+        }
+
+        async function createCategory(e) {
+            e.preventDefault();
+            const nameInput = document.getElementById('newName');
+            const lapInput = document.getElementById('newLap');
+
+            try {
+                const res = await fetch('/api/category', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: nameInput.value, lap: lapInput.value })
+                });
+                const data = await res.json();
+                
+                if(!res.ok) throw new Error(data.error || "Gagal menambah kategori");
+                
+                showToast(data.message, "success");
+                nameInput.value = '';
+                lapInput.value = '10';
+                loadCategories();
+            } catch (err) {
+                showToast(err.message, "error");
+            }
+        }
+
+        async function deleteCategory(id) {
+            if(!confirm(`PERINGATAN! Yakin ingin menghapus kelas/kategori ID #${id} secara permanen?`)) return;
+
+            try {
+                const res = await fetch(`/api/category/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                
+                if(!res.ok) throw new Error(data.error || "Gagal menghapus data");
+                
+                showToast(data.message, "success");
+                loadCategories();
+            } catch (err) {
+                showToast(err.message, "error");
+            }
+        }
+
+        // Initialize
+        loadCategories();
+    </script>
+</body>
+</html>

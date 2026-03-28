@@ -1,22 +1,44 @@
 from typing import Any, Union
 from unittest import result
-from PySide6.QtCore import Qt, QModelIndex, QPersistentModelIndex, QAbstractTableModel, Signal
+from PySide6.QtCore import (
+    Qt,
+    QModelIndex,
+    QPersistentModelIndex,
+    QAbstractTableModel,
+    Signal,
+)
 from PySide6.QtGui import QColor, QBrush
-from PySide6.QtWidgets import QWidget, QLabel, QComboBox, QSpinBox, QPushButton, QTableView, QHeaderView, \
-    QHBoxLayout, QVBoxLayout
+from PySide6.QtWidgets import (
+    QWidget,
+    QLabel,
+    QComboBox,
+    QSpinBox,
+    QPushButton,
+    QTableView,
+    QHeaderView,
+    QHBoxLayout,
+    QVBoxLayout,
+)
 from rfid.reader import Reader
-from rfid.reader_settings import StopAfter, WorkMode, AnswerModeInventoryParameter, DeviceInfo
+from rfid.reader_settings import (
+    StopAfter,
+    WorkMode,
+    AnswerModeInventoryParameter,
+    DeviceInfo,
+)
 from rfid.tag import Tag
 from rfid.utils import hex_readable, calculate_rssi
 from ui.thread.inventory_thread import InventoryThread
-from datetime import datetime  
+from datetime import datetime
 import psycopg2
 from psycopg2.extras import execute_values
 from threading import Timer
 import threading
+import os
 
 
 COLUMNS = ["Data", "Count", "RSSI", "Channel", "Timestamp"]
+
 
 class InventoryWidget(QWidget):
     is_inventory_signal = Signal(bool)
@@ -31,8 +53,12 @@ class InventoryWidget(QWidget):
         self.__work_mode: WorkMode = WorkMode.ANSWER_MODE
         self.__device_info: DeviceInfo | None = None
         self.inventory_thread: InventoryThread = InventoryThread(self.reader)
-        self.inventory_thread.result_tag_signal.connect(self.__receive_signal_result_tag)
-        self.inventory_thread.result_finished_signal.connect(self.__receive_signal_result_finished)
+        self.inventory_thread.result_tag_signal.connect(
+            self.__receive_signal_result_tag
+        )
+        self.inventory_thread.result_finished_signal.connect(
+            self.__receive_signal_result_finished
+        )
         self.inventory_thread.start()
 
         self.stop_after_label = QLabel("Stop after")
@@ -40,8 +66,12 @@ class InventoryWidget(QWidget):
 
         self.stop_after_combo_box = QComboBox()
         self.stop_after_combo_box.setMaximumWidth(100)
-        self.stop_after_combo_box.addItems([str(stop_after) for stop_after in StopAfter])
-        self.stop_after_combo_box.currentIndexChanged.connect(self.__on_changed_index_stop_after)
+        self.stop_after_combo_box.addItems(
+            [str(stop_after) for stop_after in StopAfter]
+        )
+        self.stop_after_combo_box.currentIndexChanged.connect(
+            self.__on_changed_index_stop_after
+        )
         self.param_spin_box = QSpinBox()
         self.param_spin_box.setRange(0x00, 0xFFFF)  # 0 - 65.535
         self.param_spin_box.setMaximumWidth(60)
@@ -72,15 +102,14 @@ class InventoryWidget(QWidget):
         self.allowed_minutes_spinbox.setMaximumWidth(60)
         self.allowed_minutes_spinbox.valueChanged.connect(self.update_allowed_minutes)
 
-        
         h_layout = QHBoxLayout()
         h_layout.addWidget(self.start_stop_button)
         h_layout.addWidget(self.stop_after_label)
         h_layout.addWidget(self.stop_after_combo_box)
         h_layout.addWidget(self.param_spin_box)
         h_layout.addWidget(self.param_unit_label)
-        h_layout.addWidget(self.allowed_minutes_label)         # Tambahkan label
-        h_layout.addWidget(self.allowed_minutes_spinbox)       # Tambahkan spinbox
+        h_layout.addWidget(self.allowed_minutes_label)  # Tambahkan label
+        h_layout.addWidget(self.allowed_minutes_spinbox)  # Tambahkan spinbox
         h_layout.addWidget(QLabel())
 
         v_layout = QVBoxLayout()
@@ -132,7 +161,10 @@ class InventoryWidget(QWidget):
         self.param_spin_box.setVisible(visible_answer_mode_parameters)
         self.param_unit_label.setVisible(visible_answer_mode_parameters)
 
-        if visible_answer_mode_parameters and not self.__device_info.series.enabled_stop_after_by_cycles:
+        if (
+            visible_answer_mode_parameters
+            and not self.__device_info.series.enabled_stop_after_by_cycles
+        ):
             self.stop_after_combo_box.setVisible(False)
             self.stop_after_combo_box.setCurrentIndex(StopAfter.TIME.value)
 
@@ -149,7 +181,6 @@ class InventoryWidget(QWidget):
     def stop_inventory(self) -> None:
         self.inventory_thread.request_stop = True
         self.database_pooler.stop()  # Hentikan pooler
-        self.inventory_thread.terminate()
 
     def start_inventory(self) -> None:
         self.is_inventory_signal.emit(True)
@@ -159,11 +190,16 @@ class InventoryWidget(QWidget):
 
         if self.work_mode == WorkMode.ANSWER_MODE:
             answer_mode_inventory_parameter = AnswerModeInventoryParameter(
-                stop_after=self.stop_after, value=self.param_spin_box.value())
-            self.inventory_thread.answer_mode_inventory_parameter = answer_mode_inventory_parameter
+                stop_after=self.stop_after, value=self.param_spin_box.value()
+            )
+            self.inventory_thread.answer_mode_inventory_parameter = (
+                answer_mode_inventory_parameter
+            )
         else:
             self.inventory_thread.answer_mode_inventory_parameter = None
         self.inventory_thread.work_mode = self.work_mode
+        
+        self.database_pooler.start()  # Mulai sinkronisasi DB lagi
         self.inventory_thread.request_start = True
 
     def start_inventory_all_readers(self):
@@ -175,10 +211,11 @@ class InventoryWidget(QWidget):
 
             if self.work_mode == WorkMode.ANSWER_MODE:
                 answer_mode_inventory_parameter = AnswerModeInventoryParameter(
-                    stop_after=self.stop_after,
-                    value=self.param_spin_box.value()
+                    stop_after=self.stop_after, value=self.param_spin_box.value()
                 )
-                inventory_thread.answer_mode_inventory_parameter = answer_mode_inventory_parameter
+                inventory_thread.answer_mode_inventory_parameter = (
+                    answer_mode_inventory_parameter
+                )
             else:
                 inventory_thread.answer_mode_inventory_parameter = None
 
@@ -186,7 +223,9 @@ class InventoryWidget(QWidget):
             inventory_thread.request_start = True
 
             # Koneksikan sinyal untuk menangani hasil tag yang ditemukan
-            inventory_thread.result_tag_signal.connect(self.on_tag_found)  # Buat/ubah fungsi ini
+            inventory_thread.result_tag_signal.connect(
+                self.on_tag_found
+            )  # Buat/ubah fungsi ini
             inventory_thread.result_finished_signal.connect(self.on_inventory_finished)
 
             inventory_thread.start()
@@ -201,8 +240,6 @@ class InventoryWidget(QWidget):
 
         self.is_inventory_signal.emit(False)
         self.start_stop_button.setText("Start")
-
-
 
     def __start_stop_clicked(self) -> None:
         if self.is_inventory:
@@ -245,13 +282,21 @@ class InventoryTagItemModel(QAbstractTableModel):
         self.tags: list[Tag] = []
         self.allowed_minutes = 5  # default
 
-    def rowCount(self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex) -> int:
+    def rowCount(
+        self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex
+    ) -> int:
         return len(self.tags)
 
-    def columnCount(self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex) -> int:
+    def columnCount(
+        self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex
+    ) -> int:
         return len(COLUMNS)
 
-    def data(self, index: Union[QModelIndex, QPersistentModelIndex], role: int = Qt.DisplayRole) -> Any:
+    def data(
+        self,
+        index: Union[QModelIndex, QPersistentModelIndex],
+        role: int = Qt.DisplayRole,
+    ) -> Any:
         if not index.isValid():
             return None
 
@@ -263,7 +308,7 @@ class InventoryTagItemModel(QAbstractTableModel):
             return None
 
         tag = self.tags[row]
-        
+
         if role == Qt.DisplayRole:
             tag = self.tags[index.row()]
             if index.column() == 0:  # EPC
@@ -285,7 +330,9 @@ class InventoryTagItemModel(QAbstractTableModel):
                 return bg_brush
 
     def insert(self, tag: Tag) -> None:
-        tag.timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]  # Tambahkan timestamp
+        tag.timestamp = datetime.now().strftime("%H:%M:%S.%f")[
+            :-3
+        ]  # Tambahkan timestamp
         row_count = len(self.tags)
         self.beginInsertRows(QModelIndex(), row_count, row_count)
         self.tags.append(tag)
@@ -315,7 +362,9 @@ class InventoryTagItemModel(QAbstractTableModel):
             create_index = self.createIndex(index, i)
             self.dataChanged.emit(create_index, create_index, Qt.DisplayRole)
 
-    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
+    def headerData(
+        self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole
+    ) -> Any:
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
                 return COLUMNS[section]
@@ -384,7 +433,7 @@ class InventoryTagItemModel(QAbstractTableModel):
 #                 VALUES (?, ?)
 #                 """, (str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp))
 #                 connection.commit()
-#                 connection.close()  
+#                 connection.close()
 
 #                 # Hapus dari model jika berhasil
 #                 index = self.model.tags.index(tag)
@@ -401,38 +450,41 @@ class InventoryTagItemModel(QAbstractTableModel):
 #         # Jalankan ulang pengiriman
 #         self.start()
 
+
 class DatabasePooler:
     def __init__(self, model: InventoryTagItemModel, interval: int = 3):
         self.model = model
         self.interval = interval
         self.timer = None
 
-        # Konfigurasi koneksi PostgreSQL
-        self.db_config = {
-            "host": "localhost",
-            "port": 5432,
-            "database": "inventory",
-            "user": "postgres",
-            "password": "Bismillah74"
-        }
+        # Konfigurasi koneksi PostgreSQL mengikuti environment variable (sama dengan web.py)
+        self.db_uri = os.environ.get(
+            "DATABASE_URI", 
+            "postgresql://postgres:Bismillah74@localhost:5432/inventory"
+        )
 
     def connect(self):
-        return psycopg2.connect(**self.db_config)
+        # psycopg2 mendukung metode URI connection string secara langsung
+        return psycopg2.connect(self.db_uri)
 
     def create_table(self):
         try:
             conn = self.connect()
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS inventory (
                     id SERIAL,
                     epc TEXT,
                     timestamp TEXT
                 );
-            """)
-            cursor.execute("""
+            """
+            )
+            cursor.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc);
-            """)
+            """
+            )
             conn.commit()
             cursor.close()
             conn.close()
@@ -447,95 +499,232 @@ class DatabasePooler:
         if self.timer:
             self.timer.cancel()
 
+    # def send_data(self):
+    #     tags_to_send = self.model.tags.copy()
+
+    #     try:
+    #         conn = self.connect()
+    #         cursor = conn.cursor()
+
+    #         allowed_minutes = getattr(
+    #             self.model, "allowed_minutes", 5
+    #         )  # default 5 jika tidak ada
+
+    #         for tag in tags_to_send:
+    #             try:
+    #                 epc_str = str(hex_readable(tag.data)).replace(" ", "")
+    #                 current_time = tag.timestamp
+
+    #                 # Ambil timestamp terakhir untuk EPC ini
+    #                 cursor.execute(
+    #                     """
+    #                     SELECT timestamp FROM inventory
+    #                     WHERE epc = %s
+    #                     ORDER BY id DESC
+    #                     LIMIT 1
+    #                 """,
+    #                     (epc_str,),
+    #                 )
+    #                 result = cursor.fetchone()
+
+    #                 # Hitung jumlah lap yang sudah tercatat untuk EPC ini
+
+    #                 cursor.execute(
+    #                     """
+    #                     SELECT COUNT(*) FROM inventory
+    #                     WHERE epc = %s
+    #                 """,
+    #                     (epc_str,),
+    #                 )
+    #                 count_row = cursor.fetchone()
+
+    #                 existing_lap = (
+    #                     int(count_row[0])
+    #                     if count_row and count_row[0] is not None
+    #                     else 0
+    #                 )
+
+    #                 # Ambil allowed_laps dari tabel category berdasarkan epc
+    #                 cursor.execute(
+    #                     """
+    #                     SELECT cat.lap FROM epc 
+    #                     JOIN category cat ON epc.category_id = cat.id
+    #                     WHERE epc.epc = %s
+    #                 """,
+    #                     (epc_str,),
+    #                 )
+    #                 allowed_laps = cursor.fetchone()
+
+    #                 should_insert = True
+
+    #                 #
+    #                 if result is not None and result:
+    #                     last_time = result[0]
+
+    #                     last_time_dt = datetime.strptime(last_time, "%H:%M:%S.%f")
+    #                     current_time_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
+    #                     diff_minutes = (
+    #                         abs((current_time_dt - last_time_dt).total_seconds()) / 60
+    #                     )
+
+    #                     """
+    #                     SIMPAN TIDAK BOLEH JIKA :
+    #                     1. Selish waktu epc terakhir dengan waktu saat ini kurang dari {allowed_minutes} menit
+    #                     2. Lap yang tercatat lebih dari {allowed_laps} lap
+    #                     """
+
+    #                     if (
+    #                         diff_minutes < allowed_minutes
+    #                         or existing_lap >= allowed_laps[0]
+    #                     ):
+    #                         should_insert = False
+
+    #                 if should_insert:
+    #                     formatted_time = str(current_time)
+
+    #                     cursor.execute(
+    #                         """
+    #                         INSERT INTO inventory (epc, timestamp)
+    #                         VALUES (%s, %s);
+    #                     """,
+    #                         (epc_str, formatted_time),
+    #                     )
+
+    #                 # Hapus tag dari model dalam semua kasus (sukses insert atau diskip)
+    #                 index = self.model.tags.index(tag)
+    #                 self.model.remove(index)
+
+    #             except Exception as e:
+    #                 print(f"[ERROR] Insert tag {tag.data}: {e}")
+
+    #         conn.commit()
+    #         cursor.close()
+    #         conn.close()
+
+    #     except Exception as e:
+    #         print(f"[ERROR] Database operation failed: {e}")
+
+    #     # Jalankan lagi setelah interval
+    #     self.start()
+
     def send_data(self):
         tags_to_send = self.model.tags.copy()
+
+        if not tags_to_send:  # skip jika tidak ada tag
+            self.start()
+            return
+
+        allowed_minutes = getattr(self.model, "allowed_minutes", 5)
+
+        # Kumpulkan semua EPC unik dari batch ini
+        epc_list = list({
+            str(hex_readable(tag.data)).replace(" ", "")
+            for tag in tags_to_send
+        })
 
         try:
             conn = self.connect()
             cursor = conn.cursor()
 
-            allowed_minutes = getattr(self.model, "allowed_minutes", 5)  # default 5 jika tidak ada
+            # ─────────────────────────────────────────────────────────────
+            # 1. Pemetaan EPC ke BIB untuk mencegah ganda Multi-Tag
+            # ─────────────────────────────────────────────────────────────
+            cursor.execute("SELECT epc, bib_number FROM epc WHERE epc = ANY(%s)", (epc_list,))
+            epc_to_bib = {}
+            bib_list = []
+            for row in cursor.fetchall():
+                epc_to_bib[row[0]] = row[1]
+                if row[1] not in bib_list:
+                    bib_list.append(row[1])
+
+            # ─────────────────────────────────────────────────────────────
+            # 2. Ambil History Waktu Terakhir berdasarkan BIB, bukan EPC!
+            # ─────────────────────────────────────────────────────────────
+            db_state = {}
+            if bib_list:
+                cursor.execute("""
+                    SELECT
+                        e.bib_number,
+                        MAX(i.timestamp)  AS last_timestamp,
+                        COUNT(i.id)       AS existing_lap,
+                        cat.lap           AS allowed_laps
+                    FROM inventory i
+                    JOIN epc e        ON i.epc = e.epc
+                    JOIN category cat ON e.category_id = cat.id
+                    WHERE e.bib_number = ANY(%s)
+                    GROUP BY e.bib_number, cat.lap
+                """, (bib_list,))
+
+                for row in cursor.fetchall():
+                    db_state[row[0]] = {
+                        "last_timestamp": row[1],
+                        "existing_lap":   int(row[2]),
+                        "allowed_laps":   int(row[3]),
+                    }
+
+            # ─────────────────────────────────────────────────────────────
+            # 3. Validasi & kumpulkan insert yang lolos, pisahkan yang ditolak
+            # ─────────────────────────────────────────────────────────────
+            valid_inserts  = []   # [(epc, timestamp)]
+            tags_to_remove = []   # tag yang aman dihapus dari GUI
 
             for tag in tags_to_send:
-                try:
-                    epc_str = str(hex_readable(tag.data)).replace(" ", "")
-                    current_time = tag.timestamp
+                epc_str      = str(hex_readable(tag.data)).replace(" ", "")
+                current_time = tag.timestamp
+                should_insert = True
+                bib_num = epc_to_bib.get(epc_str)
 
-                    cursor.execute("""
-                        SELECT epc FROM epc
-                        WHERE epc = %s
-                    """, (epc_str,))
-                    epc_cek = cursor.fetchone()
-                    if epc_cek is None :
-                        index = self.model.tags.index(tag)
-                        self.model.remove(index)
-                        continue
-                    
-                    # Ambil timestamp terakhir untuk EPC ini
-                    cursor.execute("""
-                        SELECT timestamp FROM inventory
-                        WHERE epc = %s
-                        ORDER BY id DESC
-                        LIMIT 1
-                    """, (epc_str,))
-                    result = cursor.fetchone()
+                if bib_num and bib_num in db_state:
+                    state       = db_state[bib_num]
+                    last_ts     = state["last_timestamp"]
+                    existing_lap = state["existing_lap"]
+                    allowed_laps = state["allowed_laps"]
 
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM inventory
-                        WHERE epc = %s
-                    """, (epc_str,))
-                    count_row = cursor.fetchone()
-                    existing_lap = int(count_row[0]) if count_row is not None and count_row else 0
+                    last_dt    = datetime.strptime(last_ts, "%H:%M:%S.%f")
+                    current_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
+                    diff_min   = abs((current_dt - last_dt).total_seconds()) / 60
 
-                    cursor.execute("""
-                        SELECT b.lap FROM epc 
-                        JOIN category b ON epc.category_id = b.id
-                        WHERE epc.epc = %s
-                    """, (epc_str,))
-                    allowed_laps = cursor.fetchone()
+                    if diff_min < allowed_minutes or existing_lap >= allowed_laps:
+                        should_insert = False
 
-                    should_insert = True
-                    
-                    if result is not None and result:
-                        last_time = result[0]
-                        
-                        last_time_dt = datetime.strptime(last_time, "%H:%M:%S.%f")
-                        current_time_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
-                        diff_minutes = abs((current_time_dt - last_time_dt).total_seconds()) / 60
+                if should_insert:
+                    valid_inserts.append((epc_str, str(current_time)))
+                    # Cegah kembar EPC pada iterasi array yang sama dengan inject memori
+                    if bib_num:
+                        if bib_num in db_state:
+                            db_state[bib_num]["last_timestamp"] = current_time
+                            db_state[bib_num]["existing_lap"] += 1
+                        else:
+                            db_state[bib_num] = { "last_timestamp": current_time, "existing_lap": 1, "allowed_laps": 100 }
 
-                        """
-                        TIDAK BOLEH SIMPAN JIKA :
-                        1. Selish waktu epc terakhir dengan waktu saat ini lebih dari {allowed_minutes} menit
-                        2. Lap yang tercatat lebih dari {allowed_laps} lap
-                        """
+                # Tag selalu masuk antrian hapus (insert maupun skip)
+                tags_to_remove.append(tag)
 
-                        if diff_minutes < allowed_minutes or existing_lap >= allowed_laps[0]:
-                            should_insert = False
-
-                    if should_insert:
-                        formatted_time = str(current_time) 
-
-                        cursor.execute("""
-                            INSERT INTO inventory (epc, timestamp)
-                            VALUES (%s, %s);
-                        """, (
-                            epc_str,
-                            formatted_time
-                        ))
-
-                    # Hapus tag dari model dalam semua kasus (sukses insert atau diskip)
-                    index = self.model.tags.index(tag)
-                    self.model.remove(index)
-
-                except Exception as e:
-                    print(f"[ERROR] Insert tag {tag.data}: {e}")
+            # ─────────────────────────────────────────────────────────────
+            # Satu bulk INSERT untuk semua tag yang lolos validasi
+            # Menggantikan INSERT satu-per-satu di dalam loop
+            # ─────────────────────────────────────────────────────────────
+            if valid_inserts:
+                psycopg2.extras.execute_values(
+                    cursor,
+                    "INSERT INTO inventory (epc, timestamp) VALUES %s",
+                    valid_inserts
+                )
 
             conn.commit()
+
+            # ─────────────────────────────────────────────────────────────
+            # Hapus dari GUI hanya setelah commit DB berhasil
+            # ─────────────────────────────────────────────────────────────
+            for tag in reversed(tags_to_remove):
+                index = self.model.tags.index(tag)
+                self.model.remove(index)
+
             cursor.close()
             conn.close()
 
         except Exception as e:
             print(f"[ERROR] Database operation failed: {e}")
+            # Tag TIDAK dihapus dari GUI → akan dicoba lagi di siklus berikutnya
 
-        # Jalankan lagi setelah interval
         self.start()

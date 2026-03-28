@@ -1,67 +1,49 @@
 <!DOCTYPE html>
-<html lang="id"></html>
+<html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Menu Navigasi</title>
+    <title>IDLAPS - Dashboard Menu</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-            background: #f8f9fa;
-            color: #222;
-            font-size: 1.25em;
-            line-height: 1.7;
-        }
-        h1 {
-            font-size: 2em;
-            margin-bottom: 24px;
-        }
-        ul {
-            list-style-type: none;
-            padding: 0;
-        }
-        li {
-            margin: 18px 0;
-        }
-        a {
-            display: inline-block;
-            background: #007bff;
-            color: #fff;
-            text-decoration: none;
-            padding: 16px 28px;
-            border-radius: 8px;
-            font-size: 1.1em;
-            transition: background 0.2s, color 0.2s;
-            outline: none;
-        }
-        a:focus, a:hover {
-            background: #0056b3;
-            color: #fff;
-            text-decoration: underline;
-        }
-        a:active {
-            background: #003d80;
-        }
-        @media (max-width: 600px) {
-            body {
-                margin: 10px;
-                font-size: 1em;
-            }
-            a {
-                width: 100%;
-                box-sizing: border-box;
-                text-align: center;
-            }
-        }
-    </style>
+    <!-- Link to Google Fonts & FontAwesome for icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Menu Navigasi</h1>
-    <ul>
-        <li><a href="/race" tabindex="1">Live</a></li>
-        <li><a href="/display" tabindex="2">Log</a></li>
-        <!-- Tambahkan file HTML lain di sini sesuai kebutuhan -->
-    </ul>
+    <div class="container">
+        <header class="text-center mb-3 mt-3">
+            <h1 style="color: var(--primary-color);">IDLAPS <span style="font-weight: 300; color: var(--text-primary);">CHECKPOINT</span></h1>
+            <p class="card-desc">Pilih modul navigasi di bawah ini untuk mengelola pertadingan.</p>
+        </header>
+
+        <main class="card-grid">
+            <a href="/race" class="card" tabindex="1">
+                <i class="fa-solid fa-flag-checkered card-icon" style="color: var(--success-color);"></i>
+                <h3 class="card-title">Live Standings</h3>
+                <p class="card-desc">Buka papan peringkat perlombaan secara Real-Time dengan fitur kontrol lap & timing lengkap.</p>
+            </a>
+
+            <a href="/display" class="card" tabindex="2">
+                <i class="fa-solid fa-database card-icon" style="color: var(--primary-color);"></i>
+                <h3 class="card-title">Database Log</h3>
+                <p class="card-desc">Lihat log rekaman RFID tag yang terdeteksi, lakukan penghapusan atau koreksi waktu manual.</p>
+            </a>
+            
+            <a href="/upload" class="card" tabindex="3">
+                <i class="fa-solid fa-cloud-arrow-up card-icon" style="color: var(--warning-color);"></i>
+                <h3 class="card-title">Upload Peserta</h3>
+                <p class="card-desc">Daftarkan mapping RFID kedalam database melalui file Excel referensi partisipan pertandingan.</p>
+            </a>
+            
+            <a href="/category_page" class="card" tabindex="4">
+                <i class="fa-solid fa-layer-group card-icon" style="color: #8b5cf6;"></i>
+                <h3 class="card-title">Manajemen Kategori</h3>
+                <p class="card-desc">Kelola nama kelas balap, target jumlah putaran (Lap), dan sinkronisasi data master via Excel.</p>
+            </a>
+        </main>
+        
+        <footer class="text-center mt-3 card-desc" style="margin-top: 4rem;">
+            &copy; 2026 IDLAPS Timing System. <br/>Didesain untuk beroperasi secara mandiri.
+        </footer>
+    </div>
 </body>
 </html>

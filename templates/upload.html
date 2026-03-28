@@ -1,81 +1,80 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Upload EPC</title>
-    <style>
-      .message {
-        padding: 10px;
-        border-radius: 5px;
-        margin-bottom: 15px;
-      }
-      .success {
-        background-color: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-      }
-      .error {
-        background-color: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-      }
-      body {
-        font-family: Verdana, Geneva, Tahoma, sans-serif;
-      }
-    </style>
-  </head>
-  <body
-    style="
-      margin: 0 auto;
-      background-color: beige;
-      text-align: center;
-      padding: 10px;
-    "
-  >
-    <h1>Upload Data EPC</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %} {% if
-    messages %} {% for category, message in messages %}
-    <div class="message {{ category }}">{{ message }}</div>
-    {% endfor %} {% endif %} {% endwith %}
-    <form action="./upload" method="post" enctype="multipart/form-data">
-      <input
-        type="file"
-        accept=".xls, .xlsx, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        name="file"
-        required
-      />
-      <button type="submit">Upload</button>
-    </form>
-    <br />
-    <br />
-    <a
-      href="./static/TEMPLATE_IMPORT.xlsx"
-      style="
-        text-decoration: none;
-        color: white;
-        background-color: green;
-        margin-bottom: 5px;
-        min-height: 24px;
-        padding: 10px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 16px;
-      "
-      >Unduh Template Disini</a
-    >
-    <a
-      href="./display"
-      style="
-        text-decoration: none;
-        color: white;
-        background-color: green;
-        margin-bottom: 5px;
-        min-height: 24px;
-        padding: 10px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 16px;
-      "
-      >Lihat Data Yang Terbaca</a
-    >
-  </body>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>IDLAPS - Upload Data EPC</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container" style="max-width: 800px;">
+        <!-- Top Toolbar -->
+        <div class="toolbar">
+            <h2 style="margin: 0; font-size: 1.5rem;"><i class="fa-solid fa-cloud-arrow-up" style="color: var(--warning-color); margin-right: 10px;"></i> Upload Data EPC</h2>
+            <div class="flex gap-2">
+                <a href="/static/TEMPLATE_IMPORT.xlsx" class="btn btn-outline" download>
+                    <i class="fa-solid fa-download"></i> Unduh Template
+                </a>
+                <a href="/" class="btn btn-primary">
+                    <i class="fa-solid fa-house"></i> Home
+                </a>
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        <div class="toast-container">
+            {% with messages = get_flashed_messages(with_categories=true) %} 
+                {% if messages %} 
+                    {% for category, message in messages %}
+                        <div class="toast {{ category }}">
+                            <i class="fa-solid {% if category == 'success' %}fa-circle-check{% else %}fa-circle-exclamation{% endif %}"></i>
+                            {{ message }}
+                        </div>
+                    {% endfor %} 
+                {% endif %} 
+            {% endwith %}
+        </div>
+
+        <!-- Main Upload Form -->
+        <div class="card" style="text-align: left; align-items: stretch; margin-bottom: 2rem;">
+            <p class="mb-2 card-desc">Silakan unggah file Excel (format <code>.xls</code> atau <code>.xlsx</code>) yang berisi pendaftaran pembalap, RFID, kategori, dan detail tim. Data dari file ini akan dicocokkan otomatis dengan log mesin RFID.</p>
+
+            <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+                <div class="dropzone" id="dropzoneBox" onclick="document.getElementById('fileInput').click()">
+                    <i class="fa-solid fa-file-excel dropzone-icon"></i>
+                    <h3 id="fileNameDisplay">Pilih file Excel dari PC Anda</h3>
+                    <p class="card-desc">Atau seret dan lepaskan file (*drag n drop) ke area ini.</p>
+                </div>
+                
+                <input 
+                    type="file" 
+                    id="fileInput"
+                    accept=".xls, .xlsx, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
+                    name="file" 
+                    required 
+                    style="display: none;"
+                    onchange="document.getElementById('fileNameDisplay').innerText = this.files[0].name; document.getElementById('dropzoneBox').style.borderColor = 'var(--success-color)';"
+                />
+                
+                <div class="text-center">
+                    <button type="submit" class="btn btn-success" style="width: 100%; padding: 1rem; font-size: 1.1rem;">
+                        <i class="fa-solid fa-upload"></i> Proses Upload Data
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Info / Warning Extra Links -->
+        <div class="card flex" style="flex-direction: row; justify-content: space-between; align-items: center; padding: 1.5rem;">
+            <div>
+                <h4 style="margin: 0;">Ingin memvalidasi tag yang masuk?</h4>
+                <p class="card-desc mb-0">Periksa secara live tag yang berhasil terekam.</p>
+            </div>
+            <a href="/display" class="btn btn-outline">
+                <i class="fa-solid fa-database"></i> Lihat Database Log
+            </a>
+        </div>
+    </div>
+</body>
 </html>
