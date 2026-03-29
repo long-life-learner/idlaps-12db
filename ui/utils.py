@@ -100,3 +100,20 @@ def pyinstaller_resource_path(relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+
+def get_db_path() -> str:
+    """
+    Mengembalikan path absolut ke file inventory.db.
+    - Mode exe (PyInstaller): di samping file .exe
+    - Mode dev (script):      di direktori root proyek
+    Kedua komponen (web.py dan inventory_widget.py) harus menggunakan
+    fungsi ini agar keduanya menulis ke file yang SAMA.
+    """
+    if getattr(sys, 'frozen', False):
+        # Berjalan sebagai hasil PyInstaller → pakai folder di sebelah .exe
+        base = os.path.dirname(sys.executable)
+    else:
+        # Berjalan sebagai script Python biasa
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "inventory.db")

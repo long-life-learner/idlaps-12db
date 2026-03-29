@@ -1,8 +1,10 @@
 from flask import Flask, request, render_template, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
-from sqlalchemy import inspect
+from sqlalchemy import inspect, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
+import sqlite3
 import os
 import pandas as pd
 from datetime import datetime, date, time, timedelta
@@ -24,23 +26,35 @@ app = Flask(__name__,
             static_folder=pyinstaller_resource_path("static"))
 app.secret_key = "IDLAPS-CHECKPOINT"  # Gantilah dengan secret key yang aman
 
-# Menggunakan env var untuk PostgreSQL, atau fallback ke default
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URI", 
-    "postgresql://postgres:Bismillah74@localhost:5432/inventory"
-)
-
+# ─────────────────────────────────────────────────────────────────────────────
+# SQLite — database file di sebelah .exe (atau direktori root saat development)
+# ─────────────────────────────────────────────────────────────────────────────
+from ui.utils import get_db_path  # noqa: E402  (import di sini agar path tersedia)
+_DB_PATH = get_db_path()
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{_DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "connect_args": {"check_same_thread": False},  # Flask berjalan di thread terpisah
+    "pool_pre_ping": True,
+}
 app.config["UPLOAD_FOLDER"] = "uploads"
-# app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-#     'pool_pre_ping': True,  # Ping koneksi sebelum digunakan
-#     'pool_recycle': 280,    # Mendaur ulang koneksi setiap 280 detik
-#     'pool_timeout': 30,     # Timeout jika koneksi pool penuh
-#     'max_overflow': 10,     # Maksimal koneksi tambahan
-# }
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 db = SQLAlchemy(app)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Aktifkan WAL mode + synchronous=NORMAL pada setiap koneksi SQLite baru.
+# WAL (Write-Ahead Logging) mengizinkan 1 writer + banyak reader BERSAMAAN
+# tanpa menimbulkan error "database is locked".
+# ─────────────────────────────────────────────────────────────────────────────
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")  # tunggu 30 detik sebelum error
+        cursor.close()
 
 
 # Define models
@@ -77,6 +91,7 @@ def initialize_database():
             inspector = inspect(db.engine)
             if not inspector.has_table("epc") or not inspector.has_table("inventory") or not inspector.has_table("category"):
                 db.create_all()
+            print(f"[DB] SQLite database siap: {_DB_PATH}")
             return True, "Database initialized successfully"
     except Exception as e:
         print(f"Error initializing database: {e}")

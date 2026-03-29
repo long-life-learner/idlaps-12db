@@ -13,7 +13,6 @@ from ui.main_widget import MainWidget
 from ui.utils import pyinstaller_resource_path
 from util_log import setup_logging
 from ui.thread.inventory_thread import InventoryThread
-# web.py di-import nanti secara *deferred* setelah DatabaseDialog berteguh.
 
 
 logger = getLogger()
@@ -25,10 +24,8 @@ class Main:
         self.reader = reader
 
         if self.reader is None:
-            # Lakukan sesuatu jika Reader tidak tersedia
             logger.warning("MainWidget() > Reader tidak diinisialisasi")
         else:
-            # Lakukan inisialisasi yang bergantung pada Reader
             logger.info(
                 f"MainWidget() > Reader diinisialisasi dengan transport: {self.reader.transport}"
             )
@@ -48,25 +45,24 @@ class Main:
 
     def start(self, app: QApplication) -> None:
         logger.info("Main() > start()")
-        
-        # Defer import web.py agar membaca os.environ yang baru di-inject dari DatabaseDialog
-        from web import initialize_database, start_web_server        
-        
 
-        # 2. Initialize Database check
+        # Defer import web.py agar modul Flask siap setelah semua setup selesai
+        from web import initialize_database, start_web_server
+
+        # Initialize Database (SQLite — tidak perlu koneksi eksternal)
         db_success, db_msg = initialize_database()
         if not db_success:
             err_msg = QMessageBox()
             err_msg.setWindowTitle("Database Error")
-            err_msg.setText(f"Gagal menghubungkan atau menginisialisasi tabel database PostgreSQL.<br><br>Pesan Error: {db_msg}")
+            err_msg.setText(f"Gagal menginisialisasi database SQLite.<br><br>Pesan Error: {db_msg}")
             err_msg.setIcon(QMessageBox.Icon.Critical)
             err_msg.exec()
             sys.exit(1)
 
-        # 3. Start Web Server in Thread
+        # Start Web Server in Thread
         threading.Thread(target=start_web_server, daemon=True).start()
 
-        # 4. Open External Browser
+        # Open External Browser
         QDesktopServices.openUrl(QUrl("http://localhost:5000/"))
 
         self.connect_widget = ConnectWidget()
@@ -76,53 +72,49 @@ class Main:
         self.connect_widget.show()
 
         # Inisialisasi Reader tanpa transport
-        self.reader = Reader()    
-
-        # Tampilkan MainWidget langsung
-        # self.main_widget = MainWidget(self.reader)
-        # self.main_widget.show()
+        self.reader = Reader()
 
         sys.exit(app.exec())
 
 
 def get_external_env_path():
+    """Path ke .env.production di sebelah exe (atau direktori project saat dev)."""
     if getattr(sys, 'frozen', False):
-        application_path = os.path.dirname(sys.executable)
+        base = os.path.dirname(sys.executable)
     else:
-        application_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(application_path, ".env.production")
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, ".env.production")
+
 
 if __name__ == "__main__":
     external_env = get_external_env_path()
-    
-    # 1. Selalu muat cadangan bawaan (bundled) terlebih dahulu agar variabel vital tidak None
-    load_dotenv(dotenv_path=pyinstaller_resource_path(".env.production"), override=False)
 
-    # 2. Jika ada opsi eksternal (.env.production di sebelah exe), itu akan menimpa (override) bawaan
+    # Muat konfigurasi RFID (BAUD_RATE, IP_ADDRESS, TCP_PORT, APP_NAME, dll)
+    # dari .env.production — masih diperlukan oleh connect_widget.py.
+    # DATABASE_URI yang ada di dalamnya diabaikan karena web.py
+    # sekarang menggunakan SQLite via get_db_path(), bukan env var.
+    load_dotenv(dotenv_path=pyinstaller_resource_path(".env.production"), override=False)
     if os.path.exists(external_env):
         load_dotenv(dotenv_path=external_env, override=True)
 
     setup_logging()
-    
+
     app = QApplication(sys.argv)
-    from ui.database_dialog import DatabaseDialog
-    
-    # 1. Munculkan Form Konfigurasi Database terlebih dahulu!# 1. Pre-requisite Warning
+
+    # Pesan startup ringkas — tidak ada lagi prerequisite PostgreSQL
     msg = QMessageBox()
-    msg.setWindowTitle("Pre-requisites / To-Do List")
-    msg.setText("<b>Sebelum melanjutkan, pastikan Anda telah memenuhi persyaratan berikut:</b><br><br>"
-                "1. PC ini harus terhubung dengan database PostgreSQL 17. Unduh di: <a href='https://www.postgresql.org/download/'>Link PostgreSQL</a><br>"
-                "2. Matikan fitur 'Sleep Mode' pada pengaturan daya/power PC Anda.<br>"
-                "3. Pastikan PC Anda terhubung dengan Internet atau jaringan LAN yang benar.")
+    msg.setWindowTitle("IDLAPS Checkpoint — Persiapan")
+    msg.setText(
+        "<b>Sebelum melanjutkan, pastikan:</b><br><br>"
+        "1. Matikan fitur <b>Sleep Mode</b> pada pengaturan daya/power PC Anda.<br>"
+        "2. Pastikan PC Anda terhubung dengan jaringan <b>LAN</b> yang benar.<br><br>"
+        "<i>Database sudah berjalan otomatis — tidak perlu instalasi apapun.</i>"
+    )
     msg.setIcon(QMessageBox.Icon.Information)
     msg.setTextFormat(Qt.TextFormat.RichText)
     msg.exec()
-    dialog = DatabaseDialog(env_path=external_env)
-    
-    if dialog.exec() == DatabaseDialog.DialogCode.Accepted:
-        # 2. Lanjut masuk ke aplikasi
-        app_core = Main()
-        app_core.start(app)
-    else:
-        # Jika batal / close
-        sys.exit(0)
+
+    app_core = Main()
+    app_core.start(app)
+
+

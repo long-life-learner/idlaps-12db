@@ -1,5 +1,12 @@
+# [LEGACY - TIDAK DIPAKAI LAGI]
+# File ini dulunya digunakan untuk konfigurasi koneksi PostgreSQL.
+# Sejak migrasi ke SQLite, file ini tidak di-import oleh main.py.
+# Dipertahankan sebagai referensi historis saja.
+# ─────────────────────────────────────────────────────────────
+
 import os
 import psycopg2
+
 from urllib.parse import urlparse, quote_plus, unquote_plus
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 

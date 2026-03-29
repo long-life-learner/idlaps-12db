@@ -29,9 +29,9 @@ from rfid.reader_settings import (
 from rfid.tag import Tag
 from rfid.utils import hex_readable, calculate_rssi
 from ui.thread.inventory_thread import InventoryThread
+from ui.utils import get_db_path
 from datetime import datetime
-import psycopg2
-from psycopg2.extras import execute_values
+import sqlite3
 from threading import Timer
 import threading
 import os
@@ -456,34 +456,29 @@ class DatabasePooler:
         self.model = model
         self.interval = interval
         self.timer = None
+        self.db_path = get_db_path()
 
-        # Konfigurasi koneksi PostgreSQL mengikuti environment variable (sama dengan web.py)
-        self.db_uri = os.environ.get(
-            "DATABASE_URI", 
-            "postgresql://postgres:Bismillah74@localhost:5432/inventory"
-        )
-
-    def connect(self):
-        # psycopg2 mendukung metode URI connection string secara langsung
-        return psycopg2.connect(self.db_uri)
+    def connect(self) -> sqlite3.Connection:
+        """Buka koneksi SQLite dengan WAL mode aktif."""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")   # izinkan banyak reader + 1 writer
+        conn.execute("PRAGMA synchronous=NORMAL")  # lebih cepat, masih aman
+        conn.execute("PRAGMA busy_timeout=30000")  # tunggu 30 detik sebelum error
+        return conn
 
     def create_table(self):
         try:
             conn = self.connect()
             cursor = conn.cursor()
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS inventory (
-                    id SERIAL,
-                    epc TEXT,
+                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                    epc       TEXT,
                     timestamp TEXT
-                );
-            """
-            )
+                )
+            """)
             cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc);
-            """
+                "CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc)"
             )
             conn.commit()
             cursor.close()
@@ -498,114 +493,6 @@ class DatabasePooler:
     def stop(self):
         if self.timer:
             self.timer.cancel()
-
-    # def send_data(self):
-    #     tags_to_send = self.model.tags.copy()
-
-    #     try:
-    #         conn = self.connect()
-    #         cursor = conn.cursor()
-
-    #         allowed_minutes = getattr(
-    #             self.model, "allowed_minutes", 5
-    #         )  # default 5 jika tidak ada
-
-    #         for tag in tags_to_send:
-    #             try:
-    #                 epc_str = str(hex_readable(tag.data)).replace(" ", "")
-    #                 current_time = tag.timestamp
-
-    #                 # Ambil timestamp terakhir untuk EPC ini
-    #                 cursor.execute(
-    #                     """
-    #                     SELECT timestamp FROM inventory
-    #                     WHERE epc = %s
-    #                     ORDER BY id DESC
-    #                     LIMIT 1
-    #                 """,
-    #                     (epc_str,),
-    #                 )
-    #                 result = cursor.fetchone()
-
-    #                 # Hitung jumlah lap yang sudah tercatat untuk EPC ini
-
-    #                 cursor.execute(
-    #                     """
-    #                     SELECT COUNT(*) FROM inventory
-    #                     WHERE epc = %s
-    #                 """,
-    #                     (epc_str,),
-    #                 )
-    #                 count_row = cursor.fetchone()
-
-    #                 existing_lap = (
-    #                     int(count_row[0])
-    #                     if count_row and count_row[0] is not None
-    #                     else 0
-    #                 )
-
-    #                 # Ambil allowed_laps dari tabel category berdasarkan epc
-    #                 cursor.execute(
-    #                     """
-    #                     SELECT cat.lap FROM epc 
-    #                     JOIN category cat ON epc.category_id = cat.id
-    #                     WHERE epc.epc = %s
-    #                 """,
-    #                     (epc_str,),
-    #                 )
-    #                 allowed_laps = cursor.fetchone()
-
-    #                 should_insert = True
-
-    #                 #
-    #                 if result is not None and result:
-    #                     last_time = result[0]
-
-    #                     last_time_dt = datetime.strptime(last_time, "%H:%M:%S.%f")
-    #                     current_time_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
-    #                     diff_minutes = (
-    #                         abs((current_time_dt - last_time_dt).total_seconds()) / 60
-    #                     )
-
-    #                     """
-    #                     SIMPAN TIDAK BOLEH JIKA :
-    #                     1. Selish waktu epc terakhir dengan waktu saat ini kurang dari {allowed_minutes} menit
-    #                     2. Lap yang tercatat lebih dari {allowed_laps} lap
-    #                     """
-
-    #                     if (
-    #                         diff_minutes < allowed_minutes
-    #                         or existing_lap >= allowed_laps[0]
-    #                     ):
-    #                         should_insert = False
-
-    #                 if should_insert:
-    #                     formatted_time = str(current_time)
-
-    #                     cursor.execute(
-    #                         """
-    #                         INSERT INTO inventory (epc, timestamp)
-    #                         VALUES (%s, %s);
-    #                     """,
-    #                         (epc_str, formatted_time),
-    #                     )
-
-    #                 # Hapus tag dari model dalam semua kasus (sukses insert atau diskip)
-    #                 index = self.model.tags.index(tag)
-    #                 self.model.remove(index)
-
-    #             except Exception as e:
-    #                 print(f"[ERROR] Insert tag {tag.data}: {e}")
-
-    #         conn.commit()
-    #         cursor.close()
-    #         conn.close()
-
-    #     except Exception as e:
-    #         print(f"[ERROR] Database operation failed: {e}")
-
-    #     # Jalankan lagi setelah interval
-    #     self.start()
 
     def send_data(self):
         tags_to_send = self.model.tags.copy()
@@ -626,10 +513,15 @@ class DatabasePooler:
             conn = self.connect()
             cursor = conn.cursor()
 
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             # 1. Pemetaan EPC ke BIB untuk mencegah ganda Multi-Tag
-            # ─────────────────────────────────────────────────────────────
-            cursor.execute("SELECT epc, bib_number FROM epc WHERE epc = ANY(%s)", (epc_list,))
+            #    SQLite: placeholder ? dan IN (?,?,?) bukan ANY(%s)
+            # ─────────────────────────────────────────────────────────────────────────────
+            placeholders_epc = ",".join(["?"] * len(epc_list))
+            cursor.execute(
+                f"SELECT epc, bib_number FROM epc WHERE epc IN ({placeholders_epc})",
+                epc_list
+            )
             epc_to_bib = {}
             bib_list = []
             for row in cursor.fetchall():
@@ -637,12 +529,13 @@ class DatabasePooler:
                 if row[1] not in bib_list:
                     bib_list.append(row[1])
 
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             # 2. Ambil History Waktu Terakhir berdasarkan BIB, bukan EPC!
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             db_state = {}
             if bib_list:
-                cursor.execute("""
+                placeholders_bib = ",".join(["?"] * len(bib_list))
+                cursor.execute(f"""
                     SELECT
                         e.bib_number,
                         MAX(i.timestamp)  AS last_timestamp,
@@ -651,9 +544,9 @@ class DatabasePooler:
                     FROM inventory i
                     JOIN epc e        ON i.epc = e.epc
                     JOIN category cat ON e.category_id = cat.id
-                    WHERE e.bib_number = ANY(%s)
+                    WHERE e.bib_number IN ({placeholders_bib})
                     GROUP BY e.bib_number, cat.lap
-                """, (bib_list,))
+                """, bib_list)
 
                 for row in cursor.fetchall():
                     db_state[row[0]] = {
@@ -662,9 +555,9 @@ class DatabasePooler:
                         "allowed_laps":   int(row[3]),
                     }
 
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             # 3. Validasi & kumpulkan insert yang lolos, pisahkan yang ditolak
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             valid_inserts  = []   # [(epc, timestamp)]
             tags_to_remove = []   # tag yang aman dihapus dari GUI
 
@@ -695,27 +588,25 @@ class DatabasePooler:
                             db_state[bib_num]["last_timestamp"] = current_time
                             db_state[bib_num]["existing_lap"] += 1
                         else:
-                            db_state[bib_num] = { "last_timestamp": current_time, "existing_lap": 1, "allowed_laps": 100 }
+                            db_state[bib_num] = {"last_timestamp": current_time, "existing_lap": 1, "allowed_laps": 100}
 
                 # Tag selalu masuk antrian hapus (insert maupun skip)
                 tags_to_remove.append(tag)
 
-            # ─────────────────────────────────────────────────────────────
-            # Satu bulk INSERT untuk semua tag yang lolos validasi
-            # Menggantikan INSERT satu-per-satu di dalam loop
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
+            # Satu bulk INSERT (executemany) untuk semua tag yang lolos validasi
+            # ─────────────────────────────────────────────────────────────────────────────
             if valid_inserts:
-                psycopg2.extras.execute_values(
-                    cursor,
-                    "INSERT INTO inventory (epc, timestamp) VALUES %s",
+                cursor.executemany(
+                    "INSERT INTO inventory (epc, timestamp) VALUES (?, ?)",
                     valid_inserts
                 )
 
             conn.commit()
 
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             # Hapus dari GUI hanya setelah commit DB berhasil
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────────────────
             for tag in reversed(tags_to_remove):
                 index = self.model.tags.index(tag)
                 self.model.remove(index)
@@ -728,3 +619,5 @@ class DatabasePooler:
             # Tag TIDAK dihapus dari GUI → akan dicoba lagi di siklus berikutnya
 
         self.start()
+
+
