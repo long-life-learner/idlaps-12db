@@ -23,11 +23,22 @@ def ip_bytes(ip_str: str) -> bytearray:
     return bytearray([int(ip) for ip in ip_str_split])
 
 
-def generate_ip_range(network_cidr: str):
-    network = ipaddress.ip_network(network_cidr)
-    ip_list = [str(ip) for ip in network.hosts()]
-
-    return ip_list
+def generate_ip_range(network_input: str):
+    if '-' in network_input:
+        # Format: 192.168.1.3-255
+        start_ip, end_val = network_input.split('-')
+        parts = start_ip.split('.')
+        base = ".".join(parts[:3])
+        start_host = int(parts[3])
+        end_host = int(end_val)
+        return [f"{base}.{i}" for i in range(start_host, end_host + 1)]
+    elif '/' in network_input:
+        # Format CIDR: 192.168.1.200/24 --> strict=False agar tidak eror host bits
+        network = ipaddress.ip_network(network_input, strict=False)
+        return [str(ip) for ip in network.hosts()]
+    else:
+        # Format single IP
+        return [network_input]
 
 
 def netmask_to_cidr(netmask: str) -> int:

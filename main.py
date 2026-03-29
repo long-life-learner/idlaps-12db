@@ -9,7 +9,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from dotenv import load_dotenv
 from rfid.reader import Reader
 from ui.connect_widget import ConnectWidget
-from ui.main_widget import MainWidget
+from ui.multi_reader_main_widget import MultiReaderMainWidget
+
 from ui.utils import pyinstaller_resource_path
 from util_log import setup_logging
 from ui.thread.inventory_thread import InventoryThread
@@ -30,18 +31,19 @@ class Main:
                 f"MainWidget() > Reader diinisialisasi dengan transport: {self.reader.transport}"
             )
 
-    @Slot(Reader)
-    def __receive_signal_reader_from_connect_widget(self, reader: Reader) -> None:
+    @Slot(list)
+    def __receive_signal_readers_from_connect_widget(self, readers: list[Reader]) -> None:
         logger.info(
-            f"Main() > __receive_signal_reader_from_connect_widget() > reader.transport: {reader.transport}"
+            f"Main() > __receive_signal_readers_from_connect_widget() > connected readers: {len(readers)}"
         )
 
         self.connect_widget.close()
 
-        self.reader = reader
-        self.main_widget = MainWidget(reader)
+        self.readers = readers
+        self.main_widget = MultiReaderMainWidget(readers)
         self.connect_widget = None
         self.main_widget.show()
+
 
     def start(self, app: QApplication) -> None:
         logger.info("Main() > start()")
@@ -66,9 +68,10 @@ class Main:
         QDesktopServices.openUrl(QUrl("http://localhost:5000/"))
 
         self.connect_widget = ConnectWidget()
-        self.connect_widget.reader_connected_signal.connect(
-            self.__receive_signal_reader_from_connect_widget
+        self.connect_widget.readers_connected_signal.connect(
+            self.__receive_signal_readers_from_connect_widget
         )
+
         self.connect_widget.show()
 
         # Inisialisasi Reader tanpa transport

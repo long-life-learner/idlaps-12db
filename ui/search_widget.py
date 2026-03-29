@@ -11,22 +11,16 @@ from rfid.reader_settings import NetworkSettings
 from rfid.utils import netmask_to_cidr, ip_string, hex_readable
 from ui.thread.search_ip_thread import SearchIpThread
 from ui.utils import show_message_box, set_widget_style
-from rfid.transport import  TcpTransport
-from ui.thread.connect_thread import  ConnectThread
 from logging import getLogger
-from ui.main_widget import MainWidget
-from ui.inventory_widget import InventoryWidget
 
 logger = getLogger()
 class SearchIpWidget(QWidget):
-    network_settings_signal = Signal(type)
+    network_settings_list_signal = Signal(list)
+
 
     def __init__(self) -> None:
         super().__init__()
-        self.readers = []  # ✅ Tambahkan ini
-        self.inventory_threads = []  # ✅ Tambahkan juga ini kalau kamu belum buat
-        # self.inventory_widget = InventoryWidget(readers=self.readers)
-        # self.inventory_widget.show()
+
 
 
         self.setWindowTitle(os.getenv('APP_NAME'))
@@ -34,18 +28,13 @@ class SearchIpWidget(QWidget):
         self.setMaximumWidth(600)
         self.setMinimumWidth(600)
 
-        ip_network_label = QLabel("IP Network")
-        ip_network_label.setMaximumWidth(80)
-        or_label = QLabel("/")
-        or_label.setMaximumWidth(10)
+        ip_network_label = QLabel("IP Range / CIDR")
+        ip_network_label.setMaximumWidth(100)
 
-        self.ip_network_line_edit = QLineEdit(os.getenv('IP_NETWORK'))
+        self.ip_network_line_edit = QLineEdit("192.168.1.3-255")
         self.ip_network_line_edit.setMaximumWidth(200)
 
-        self.cidr_spin_box = QSpinBox()
-        self.cidr_spin_box.setRange(0, 32)
-        self.cidr_spin_box.setValue(int(os.getenv('CIDR')))
-        self.cidr_spin_box.setMaximumWidth(50)
+
 
         self.search_button = QPushButton("Search")
         self.search_button.clicked.connect(self.__search_clicked)
@@ -79,8 +68,7 @@ class SearchIpWidget(QWidget):
         h_layout = QHBoxLayout()
         h_layout.addWidget(ip_network_label)
         h_layout.addWidget(self.ip_network_line_edit)
-        h_layout.addWidget(or_label)
-        h_layout.addWidget(self.cidr_spin_box)
+
         h_layout.addWidget(self.search_button)
         h_layout.addWidget(self.select_button)
 
@@ -118,57 +106,9 @@ class SearchIpWidget(QWidget):
             show_message_box("Peringatan", "Silakan pilih setidaknya satu perangkat.", success=False)
             return
 
-        self.progress_bar.show()
-        self.setEnabled(False)
+        self.network_settings_list_signal.emit(selected_network_settings)
+        self.close()
 
-        self.remaining_threads = len(selected_network_settings)
-        self.connect_threads = []
-
-        for settings in selected_network_settings:
-            ip_address = settings.ip_address
-            port = settings.port
-
-            try:
-                transport = TcpTransport(ip_string(ip_address), port)
-            except Exception as e:
-                logger.error(f"Gagal buat transport untuk {ip_string(ip_address)}:{port} - {e}")
-                self.remaining_threads -= 1
-                continue
-
-            connect_thread = ConnectThread(transport)
-            connect_thread.reader_connected_signal.connect(self.__receive_signal_reader_connected)
-            connect_thread.finished_signal.connect(self.__on_connect_thread_finished)
-            connect_thread.start()
-
-            self.connect_threads.append(connect_thread)
-
-    def __receive_signal_reader_connected(self, reader):
-        if reader is None:
-            logger.warning("Koneksi ke reader gagal.")
-            return
-
-        logger.info("Reader berhasil dikoneksikan.")
-        logger.info(f"Main() > __receive_signal_reader_connected() > reader.transport: {reader.transport}")
-
-        
-        self.readers.append(reader)  # Simpan semua reader
-
-        # Tampilkan MainWidget
-        self.main_widget = MainWidget(reader)
-        self.main_widget.show()
-            
-    def __on_connect_thread_finished(self, transport):
-        self.remaining_threads -= 1
-        if self.remaining_threads <= 0:
-            self.progress_bar.hide()
-            self.setEnabled(True)
-            self.close()
-            self.start_inventory_all_readers()
-    
-    def start_inventory_all_readers(self):
-       
-        for reader in self.readers:
-            self.start_inventory(reader)
 
     @property
     def ip_network(self) -> str:
@@ -177,29 +117,15 @@ class SearchIpWidget(QWidget):
             raise ValueError("IP network is empty")
         return value
 
-    @property
-    def cidr(self) -> int:
-        value = self.cidr_spin_box.text().strip()
 
-        if not value:
-            raise ValueError("CIDR is empty")
-
-        try:
-            value = int(value)
-        except ValueError:
-            raise ValueError("Port must be a number")
-
-        if not (0 < value <= 32):
-            raise ValueError("Port must be start from 1 to 32")
-
-        return value
 
     def on_row_double_clicked(self, index: QModelIndex) -> None:
         if self.is_searching:
             return
         network_settings: NetworkSettings = self.search_ip_model.list_network_settings[index.row()]
-        self.network_settings_signal.emit(network_settings)
+        self.network_settings_list_signal.emit([network_settings])
         self.close()
+
 
     def __search_clicked(self) -> None:
         self.is_searching = not self.is_searching
@@ -208,7 +134,9 @@ class SearchIpWidget(QWidget):
             self.search_button.setDisabled(True)
             self.search_button.setText("Searching...")
             self.search_ip_model.clear()
-            self.search_ip_thread = SearchIpThread(self.ip_network, self.cidr)
+            # Kita kirimkan ip_network string (yg bs berupa CIDR atau range) langsung ke thread
+            self.search_ip_thread = SearchIpThread(self.ip_network)
+
             self.search_ip_thread.progress_signal.connect(self.__receive_signal_progress)
             self.search_ip_thread.network_settings_signal.connect(self.__receive_signal_network_settings)
             self.search_ip_thread.finish_signal.connect(self.__receive_signal_finish)

@@ -19,11 +19,11 @@ class SearchIpThread(QThread):
     network_settings_signal = Signal(type)
     finish_signal = Signal()
 
-    def __init__(self, ip_network: str, cidr: int) -> None:
+    def __init__(self, ip_range: str) -> None:
         super().__init__()
-        self.ip_network: str = ip_network
-        self.cidr: int = cidr
-        self.ip_ranges: list[str] = generate_ip_range(f"{self.ip_network}/{self.cidr}")
+        self.ip_range: str = ip_range
+        self.ip_ranges: list[str] = generate_ip_range(self.ip_range)
+
 
         self.send_count: int = 0
         self._lock = threading.Lock()

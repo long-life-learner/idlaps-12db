@@ -4,7 +4,8 @@ from logging import getLogger
 from PySide6 import QtCore
 from PySide6.QtCore import Signal, QSize
 from PySide6.QtWidgets import QWidget, QTabWidget, \
-    QLabel, QComboBox, QLineEdit, QGridLayout, QPushButton, QVBoxLayout, QProgressBar, QSpinBox
+    QLabel, QComboBox, QLineEdit, QGridLayout, QPushButton, QVBoxLayout, QProgressBar, QSpinBox, QListWidget, QListWidgetItem, QHBoxLayout
+
 from usb import USBError
 from rfid.exception import ReaderException
 from rfid.reader import Reader
@@ -20,8 +21,6 @@ logger = getLogger()
 
 
 class _ConnectTabWidget(QTabWidget):
-    search_ip_selected_signal = Signal(type)
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -29,7 +28,6 @@ class _ConnectTabWidget(QTabWidget):
         self.usb_widget: ConnectUsbWidget = ConnectUsbWidget()
         self.usb_widget.device_addresses_signal.connect(self.__receive_signal_device_addresses)
         self.tcp_widget: ConnectTcpWidget = ConnectTcpWidget()
-        self.tcp_widget.search_ip_selected_signal.connect(self.__receive_signal_search_ip_selected)
 
         self.addTab(self.serial_widget, str(ConnectionType.SERIAL))
         self.addTab(self.usb_widget, str(ConnectionType.USB))
@@ -43,9 +41,6 @@ class _ConnectTabWidget(QTabWidget):
     def __receive_signal_device_addresses(self, device_addresses: list[DeviceAddress]) -> None:
         if len(device_addresses) > 0:
             self.setCurrentIndex(1)
-
-    def __receive_signal_search_ip_selected(self, network_settings: NetworkSettings) -> None:
-        self.search_ip_selected_signal.emit(network_settings)
 
 
 class ConnectSerialWidget(QWidget):
@@ -166,74 +161,112 @@ class ConnectUsbWidget(QWidget):
 
 
 class ConnectTcpWidget(QWidget):
-    search_ip_selected_signal = Signal(type)
+    search_ip_list_selected_signal = Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
 
-        layout = QGridLayout()
+        layout = QVBoxLayout()
+        
+        # Input Header
+        input_layout = QHBoxLayout()
         ip_address_port_label = QLabel("IP Address")
-        ip_address_port_label.setMaximumWidth(90)
+        ip_address_port_label.setMaximumWidth(60)
         port_label = QLabel("Port")
-        port_label.setMaximumWidth(70)
-        or_label = QLabel("or")
-        or_label.setMaximumWidth(50)
+        port_label.setMaximumWidth(30)
 
-        self.ip_address_line_edit = QLineEdit(os.getenv('IP_ADDRESS'))
-        self.ip_address_line_edit.setMaximumWidth(200)
+        self.ip_address_line_edit = QLineEdit(os.getenv('IP_ADDRESS', '192.168.1.200'))
+        self.ip_address_line_edit.setMaximumWidth(120)
         self.ip_address_line_edit.setValidator(IpAddressValidator())
 
         self.port_spin_box = QSpinBox()
         self.port_spin_box.setRange(0, 65535)
-        self.port_spin_box.setValue(int(os.getenv('TCP_PORT')))
-        self.port_spin_box.setMinimumWidth(70)
-        self.port_spin_box.setMaximumWidth(70)
+        self.port_spin_box.setValue(int(os.getenv('TCP_PORT', '2022')))
+        self.port_spin_box.setMaximumWidth(60)
 
-        self.search_ip_button: QPushButton = QPushButton("Search")
+        self.add_button = QPushButton("Add")
+        self.add_button.clicked.connect(self._add_manual_ip)
+        self.add_button.setMaximumWidth(50)
+
+        self.search_ip_button = QPushButton("Search")
         self.search_ip_button.clicked.connect(self._show_search_ip_widget)
 
-        layout.addWidget(ip_address_port_label, 0, 0)
-        layout.addWidget(self.ip_address_line_edit, 0, 1)
-        layout.addWidget(port_label, 0, 2)
-        layout.addWidget(self.port_spin_box, 0, 3)
-        layout.addWidget(or_label, 0, 4)
-        layout.addWidget(self.search_ip_button, 0, 5)
+        input_layout.addWidget(ip_address_port_label)
+        input_layout.addWidget(self.ip_address_line_edit)
+        input_layout.addWidget(port_label)
+        input_layout.addWidget(self.port_spin_box)
+        input_layout.addWidget(self.add_button)
+        input_layout.addWidget(self.search_ip_button)
+        
+        # List of IPs
+        self.ip_list_widget = QListWidget()
+        
+        layout.addLayout(input_layout)
+        layout.addWidget(self.ip_list_widget)
         self.setLayout(layout)
 
         self.search_widget: SearchIpWidget = SearchIpWidget()
-        self.search_widget.network_settings_signal.connect(self.search_ip_selected_signal.emit)
+        self.search_widget.network_settings_list_signal.connect(self._on_search_ip_selected)
 
-    @property
-    def ip_address(self) -> str:
-        value = self.ip_address_line_edit.text().strip()
-        if not value:
-            raise ValueError("IP address is empty")
-        return value
+    def _add_manual_ip(self):
+        ip_address = self.ip_address_line_edit.text().strip()
+        port = self.port_spin_box.value()
+        if not ip_address:
+            return
+        self._add_to_list(ip_address, port)
 
-    @property
-    def port(self) -> int:
-        value = self.port_spin_box.text().strip()
+    def _on_search_ip_selected(self, network_settings_list: list[NetworkSettings]):
+        for ns in network_settings_list:
+            ip_str = ip_string(ns.ip_address)
+            self._add_to_list(ip_str, ns.port)
 
-        if not value:
-            raise ValueError("Port is empty")
+    def _add_to_list(self, ip_address: str, port: int):
+        display_text = f"{ip_address}:{port}"
+        # Cek apakah sudah ada (mencegah duplikat)
+        for i in range(self.ip_list_widget.count()):
+            item = self.ip_list_widget.item(i)
+            # Karena custom widget, kita cek user data
+            if item.data(QtCore.Qt.UserRole) == display_text:
+                return
 
-        try:
-            value = int(value)
-        except ValueError:
-            raise ValueError("Port must be a number")
+        # Buat Custom Item dengan Tombol Hapus
+        item = QListWidgetItem(self.ip_list_widget)
+        item.setData(QtCore.Qt.UserRole, display_text)
+        
+        widget = QWidget()
+        widget_layout = QHBoxLayout()
+        widget_layout.setContentsMargins(5, 2, 5, 2)
+        
+        lbl = QLabel(display_text)
+        del_btn = QPushButton("×")
+        del_btn.setFixedSize(20, 20)
+        del_btn.setStyleSheet("color: red; font-weight: bold; border: none;")
+        del_btn.clicked.connect(lambda: self.ip_list_widget.takeItem(self.ip_list_widget.row(item)))
+        
+        widget_layout.addWidget(lbl)
+        widget_layout.addStretch()
+        widget_layout.addWidget(del_btn)
+        widget.setLayout(widget_layout)
+        
+        item.setSizeHint(widget.sizeHint())
+        self.ip_list_widget.setItemWidget(item, widget)
 
-        if not (0 < value <= 65_535):
-            raise ValueError("Port must be start from 1 to 65.535")
-
-        return value
+    def get_all_tcp_transports(self) -> list[TcpTransport]:
+        transports = []
+        for i in range(self.ip_list_widget.count()):
+            item = self.ip_list_widget.item(i)
+            text = item.data(QtCore.Qt.UserRole)
+            ip_addr, port_str = text.split(":")
+            transports.append(TcpTransport(ip_addr, int(port_str)))
+        return transports
 
     def _show_search_ip_widget(self) -> None:
         self.search_widget.show()
 
 
+
 class ConnectWidget(QWidget):
-    reader_connected_signal = Signal(Reader)
-    search_ip_selected_signal = Signal(type)
+    readers_connected_signal = Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
@@ -241,7 +274,7 @@ class ConnectWidget(QWidget):
         set_widget_style(self)
 
         self.tab = _ConnectTabWidget()
-        self.tab.search_ip_selected_signal.connect(self.__receive_signal_search_ip_selected)
+
 
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setContentsMargins(1, 1, 1, 1)
@@ -262,12 +295,15 @@ class ConnectWidget(QWidget):
 
         self.setLayout(layout)
 
-        self.connect_thread: ConnectThread | None = None
+        self.connect_threads: list[ConnectThread] = []
+        self.connected_readers: list[Reader] = []
+        self.failed_ports: list[str] = []
+        self.active_threads_count = 0
 
     def closeEvent(self, event):
         self.tab.close()
-        if self.connect_thread:
-            self.connect_thread.terminate()
+        for thread in self.connect_threads:
+            thread.terminate()
         event.accept()
 
     @property
@@ -287,57 +323,62 @@ class ConnectWidget(QWidget):
         return self.tab.tcp_widget
 
     def __connect_clicked(self) -> None:
-        transport = None
+        transports = []
         try:
             if self.connection_type == ConnectionType.SERIAL:
-                transport = SerialTransport(self.serial_widget.port, self.serial_widget.baud_rate)
+                transports.append(SerialTransport(self.serial_widget.port, self.serial_widget.baud_rate))
             elif self.connection_type == ConnectionType.USB:
-                transport = UsbTransport(self.usb_widget.device_address)
+                transports.append(UsbTransport(self.usb_widget.device_address))
             elif self.connection_type == ConnectionType.TCP_IP:
-                transport = TcpTransport(self.tcp_widget.ip_address, self.tcp_widget.port)
+                transports = self.tcp_widget.get_all_tcp_transports()
+                if not transports:
+                    show_message_box("Warning", "IP list is empty. Please add or search IPs first.", success=False)
+                    return
         except Exception as e:
             show_message_box("Failed", f"Something went wrong, {e}.", success=False)
             return
 
-        logger.info(f"ConnectWidget() > __connect_clicked() > self.connection_type: {self.connection_type}, "
-                    f"transport: {transport}")
-
-        assert transport is not None
-
         self.progress_bar.show()
         self.setEnabled(False)
+        
+        self.connect_threads.clear()
+        self.connected_readers.clear()
+        self.failed_ports.clear()
+        self.active_threads_count = len(transports)
 
-        self.connect_thread = ConnectThread(transport)
-        self.connect_thread.reader_connected_signal.connect(self.__receive_signal_reader_connected)
-        self.connect_thread.start()
+        for transport in transports:
+            logger.info(f"ConnectWidget() > __connect_clicked() > transport: {transport}")
+            thread = ConnectThread(transport)
+            thread.reader_connected_signal.connect(self.__receive_signal_reader_connected)
+            thread.finished_signal.connect(lambda t: self.__on_thread_finished())
+            thread.start()
+            self.connect_threads.append(thread)
 
     def __receive_signal_reader_connected(self, response: Reader | Exception) -> None:
-        self.progress_bar.hide()
-        self.setEnabled(True)
-
         if isinstance(response, Reader):
-            self.reader_connected_signal.emit(response)
-        elif isinstance(response, ReaderException):
-            show_message_box("Failed", response.message)
+            self.connected_readers.append(response)
         elif isinstance(response, Exception):
-            message = str(response)
+            # Coba ambil info transport jika ada, atau buat dummy message
+            msg = str(response)
             if isinstance(response, USBError) and 'timeout error' in str(response):
-                message = "USB timeout, try again."
-            if not message:
-                message = "Something went wrong, can't connect to reader, maybe try another port/baud rate."
-            show_message_box("Failed", message)
+                msg = "USB timeout"
+            if not msg:
+                msg = "Connection failed"
+            self.failed_ports.append(msg)
 
-    def __receive_signal_search_ip_selected(self, network_settings: NetworkSettings) -> None:
-        try:
-            transport = TcpTransport(ip_string(network_settings.ip_address), network_settings.port)
-        except Exception as e:
-            show_message_box("Failed", f"Something went wrong, {e}.", success=False)
-            return
+    def __on_thread_finished(self):
+        self.active_threads_count -= 1
+        if self.active_threads_count == 0:
+            self.progress_bar.hide()
+            self.setEnabled(True)
 
-        self.progress_bar.show()
-        self.setEnabled(False)
+            if self.failed_ports:
+                msg = "Gagal terkoneksi ke beberapa perangkat:\n" + "\n".join(self.failed_ports)
+                show_message_box("Sebagian Koneksi Gagal", msg, success=False)
 
-        self.connect_thread = ConnectThread(transport)
-        self.connect_thread.reader_connected_signal.connect(self.__receive_signal_reader_connected)
-        self.connect_thread.start()
+            if self.connected_readers:
+                self.readers_connected_signal.emit(self.connected_readers)
+            else:
+                show_message_box("Failed", "Semua koneksi gagal. Silahkan coba lagi.", success=False)
+
 

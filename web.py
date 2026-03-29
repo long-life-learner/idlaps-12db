@@ -75,6 +75,7 @@ class Inventory(db.Model):
     timestamp = db.Column(
         db.String(50), nullable=False
     )  # Changed to String to handle non-ISO format
+    reader_id = db.Column(db.String(50), nullable=True)  # Identitas antenna yang merekam
 
 
 class Category(db.Model):
@@ -91,6 +92,17 @@ def initialize_database():
             inspector = inspect(db.engine)
             if not inspector.has_table("epc") or not inspector.has_table("inventory") or not inspector.has_table("category"):
                 db.create_all()
+            
+            # Migrasi: Tambah kolom reader_id jika belum ada (untuk DB lama)
+            if inspector.has_table("inventory"):
+                columns = [col['name'] for col in inspector.get_columns("inventory")]
+                if "reader_id" not in columns:
+                    from sqlalchemy import text
+                    with db.engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE inventory ADD COLUMN reader_id TEXT"))
+                        conn.commit()
+                        print("[DB] Kolom 'reader_id' berhasil ditambahkan ke tabel inventory.")
+
             print(f"[DB] SQLite database siap: {_DB_PATH}")
             return True, "Database initialized successfully"
     except Exception as e:

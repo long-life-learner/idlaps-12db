@@ -35,7 +35,7 @@ class MainTab(Enum):
 class _MainTabWidget(QTabWidget):
     device_info_signal = Signal(type)
 
-    def __init__(self, reader: Reader) -> None:
+    def __init__(self, reader: Reader, reader_id: str = None) -> None:
         super().__init__()
 
         logger.info(f"_MainTabWidget() > __init__()")
@@ -43,7 +43,8 @@ class _MainTabWidget(QTabWidget):
         #RIKZA
         self.reader_settings_widget = ReaderSettingsWidget(reader)
         self.reader_settings_widget.on_reboot_signal.connect(self.__receive_signal_on_reboot)
-        self.inventory_widget = InventoryWidget(reader)
+        self.inventory_widget = InventoryWidget(reader, reader_id=reader_id)
+
         self.read_write_lock_kill_widget = ReadWriteLockKillWidget(reader)
         self.read_write_lock_kill_widget.is_read_write_lock_kill_signal.connect(
             self.__receive_signal_is_read_write_lock_kill)
@@ -110,7 +111,7 @@ class _MainTabWidget(QTabWidget):
 
 
 class MainWidget(QWidget):
-    def __init__(self, reader: Reader) -> None:
+    def __init__(self, reader: Reader, reader_id: str = None) -> None:
     # def __init__(self, reader: None) -> None:
         super().__init__()
         logger.info(f"MainWidget() > __init__()")
@@ -141,7 +142,8 @@ class MainWidget(QWidget):
         self.menu_bar.addMenu(self.help_menu)
 
         # RIKZA
-        self.tab = _MainTabWidget(reader)
+        self.tab = _MainTabWidget(reader, reader_id=reader_id)
+
         self.log_widget = LogWidget(reader)
 
         log_layout = QVBoxLayout()

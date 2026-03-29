@@ -44,8 +44,9 @@ class InventoryWidget(QWidget):
     is_inventory_signal = Signal(bool)
     tags_signal = Signal(list)
 
-    def __init__(self, reader: Reader) -> None:
+    def __init__(self, reader: Reader, reader_id: str = None) -> None:
         super().__init__()
+
 
         # self.readers = readers
         # self.inventory_threads = []
@@ -118,8 +119,10 @@ class InventoryWidget(QWidget):
         self.setLayout(v_layout)
 
         self.stop_after_combo_box.setCurrentIndex(StopAfter.TIME.value)
-        self.database_pooler = DatabasePooler(self.tag_item_model)
+        self.reader_id = reader_id
+        self.database_pooler = DatabasePooler(self.tag_item_model, reader_id=self.reader_id)
         self.database_pooler.start()
+
 
     def update_allowed_minutes(self, value):
         self.tag_item_model.allowed_minutes = value
@@ -452,11 +455,16 @@ class InventoryTagItemModel(QAbstractTableModel):
 
 
 class DatabasePooler:
-    def __init__(self, model: InventoryTagItemModel, interval: int = 3):
+    def __init__(self, model: InventoryTagItemModel, interval: int = 3, reader_id: str = None):
         self.model = model
         self.interval = interval
+        self.reader_id = reader_id
         self.timer = None
         self.db_path = get_db_path()
+
+        # Pastikan tabel dibuat dengan parameter terbaru
+        self.create_table()
+
 
     def connect(self) -> sqlite3.Connection:
         """Buka koneksi SQLite dengan WAL mode aktif."""
@@ -474,9 +482,11 @@ class DatabasePooler:
                 CREATE TABLE IF NOT EXISTS inventory (
                     id        INTEGER PRIMARY KEY AUTOINCREMENT,
                     epc       TEXT,
-                    timestamp TEXT
+                    timestamp TEXT,
+                    reader_id TEXT
                 )
             """)
+
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc)"
             )
@@ -581,8 +591,9 @@ class DatabasePooler:
                         should_insert = False
 
                 if should_insert:
-                    valid_inserts.append((epc_str, str(current_time)))
+                    valid_inserts.append((epc_str, str(current_time), self.reader_id))
                     # Cegah kembar EPC pada iterasi array yang sama dengan inject memori
+
                     if bib_num:
                         if bib_num in db_state:
                             db_state[bib_num]["last_timestamp"] = current_time
@@ -598,11 +609,12 @@ class DatabasePooler:
             # ─────────────────────────────────────────────────────────────────────────────
             if valid_inserts:
                 cursor.executemany(
-                    "INSERT INTO inventory (epc, timestamp) VALUES (?, ?)",
+                    "INSERT INTO inventory (epc, timestamp, reader_id) VALUES (?, ?, ?)",
                     valid_inserts
                 )
 
             conn.commit()
+
 
             # ─────────────────────────────────────────────────────────────────────────────
             # Hapus dari GUI hanya setelah commit DB berhasil
