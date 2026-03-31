@@ -61,11 +61,11 @@ class Main:
             err_msg.exec()
             sys.exit(1)
 
-        # Start Web Server in Thread
-        threading.Thread(target=start_web_server, daemon=True).start()
+        # Start Web Server in Thread (DIMATIKAN SEKARANG - Murni Mode Gateway Online)
+        # threading.Thread(target=start_web_server, daemon=True).start()
 
-        # Open External Browser
-        QDesktopServices.openUrl(QUrl("http://localhost:5000/"))
+        # Open External Browser (DIMATIKAN - User diminta buka Web Dashboard online time.idlaps.com)
+        # QDesktopServices.openUrl(QUrl("http://localhost:5000/"))
 
         self.connect_widget = ConnectWidget()
         self.connect_widget.readers_connected_signal.connect(
@@ -111,7 +111,6 @@ if __name__ == "__main__":
         "<b>Sebelum melanjutkan, pastikan:</b><br><br>"
         "1. Matikan fitur <b>Sleep Mode</b> pada pengaturan daya/power PC Anda.<br>"
         "2. Pastikan PC Anda terhubung dengan jaringan <b>LAN</b> yang benar.<br><br>"
-        "<i>Database sudah berjalan otomatis — tidak perlu instalasi apapun.</i>"
     )
     msg.setIcon(QMessageBox.Icon.Information)
     msg.setTextFormat(Qt.TextFormat.RichText)

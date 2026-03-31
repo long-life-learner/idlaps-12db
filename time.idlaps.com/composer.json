@@ -1,0 +1,7 @@
+{
+    "name": "idlaps/time",
+    "description": "IDLAPS Time Scoring",
+    "require": {
+        "phpoffice/phpspreadsheet": "^5.5"
+    }
+}

@@ -1,0 +1,9 @@
+RewriteEngine On
+RewriteBase /
+
+# Jangan rewrite file/folder yang ada
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Semua request ke index.php (optional — biarkan PHP yang routing)
+# RewriteRule ^ index.php [QSA,L]

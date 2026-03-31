@@ -30,11 +30,11 @@ from rfid.tag import Tag
 from rfid.utils import hex_readable, calculate_rssi
 from ui.thread.inventory_thread import InventoryThread
 from ui.utils import get_db_path
-from datetime import datetime
 import sqlite3
 from threading import Timer
 import threading
 import os
+from datetime import datetime, timedelta
 
 
 COLUMNS = ["Data", "Count", "RSSI", "Channel", "Timestamp"]
@@ -44,13 +44,11 @@ class InventoryWidget(QWidget):
     is_inventory_signal = Signal(bool)
     tags_signal = Signal(list)
 
-    def __init__(self, reader: Reader, reader_id: str = None) -> None:
+    def __init__(self, reader: Reader, reader_id: str = None, time_offset: float = 0.0) -> None:
         super().__init__()
-
-
-        # self.readers = readers
-        # self.inventory_threads = []
+        
         self.reader: Reader = reader
+        self.time_offset = time_offset
         self.__work_mode: WorkMode = WorkMode.ANSWER_MODE
         self.__device_info: DeviceInfo | None = None
         self.inventory_thread: InventoryThread = InventoryThread(self.reader)
@@ -95,13 +93,11 @@ class InventoryWidget(QWidget):
         self.inventory_table_view.horizontalHeader().setStretchLastSection(True)
         self.inventory_table_view.verticalHeader().setDefaultSectionSize(10)
 
-        self.allowed_minutes_label = QLabel("Int (min)")
-        self.allowed_minutes_label.setFixedWidth(70)
-        self.allowed_minutes_spinbox = QSpinBox()
-        self.allowed_minutes_spinbox.setRange(0, 120)
-        self.allowed_minutes_spinbox.setValue(5)
-        self.allowed_minutes_spinbox.setMaximumWidth(60)
-        self.allowed_minutes_spinbox.valueChanged.connect(self.update_allowed_minutes)
+        # Widget allowed_minutes telah dihapus sesuai instruksi
+
+        # Indikator Unsynced Data In Wait
+        self.unsynced_label = QLabel("🟢 Data in Wait: 0")
+        self.unsynced_label.setStyleSheet("font-weight: bold; color: green; padding-left: 15px;")
 
         h_layout = QHBoxLayout()
         h_layout.addWidget(self.start_stop_button)
@@ -109,8 +105,7 @@ class InventoryWidget(QWidget):
         h_layout.addWidget(self.stop_after_combo_box)
         h_layout.addWidget(self.param_spin_box)
         h_layout.addWidget(self.param_unit_label)
-        h_layout.addWidget(self.allowed_minutes_label)  # Tambahkan label
-        h_layout.addWidget(self.allowed_minutes_spinbox)  # Tambahkan spinbox
+        h_layout.addWidget(self.unsynced_label)
         h_layout.addWidget(QLabel())
 
         v_layout = QVBoxLayout()
@@ -124,8 +119,14 @@ class InventoryWidget(QWidget):
         self.database_pooler.start()
 
 
-    def update_allowed_minutes(self, value):
-        self.tag_item_model.allowed_minutes = value
+
+    def update_unsynced_count(self, count: int) -> None:
+        if count > 0:
+            self.unsynced_label.setText(f"🟡 Data in Wait: {count}")
+            self.unsynced_label.setStyleSheet("font-weight: bold; color: darkorange; padding-left: 15px;")
+        else:
+            self.unsynced_label.setText("🟢 Data in Wait: 0")
+            self.unsynced_label.setStyleSheet("font-weight: bold; color: green; padding-left: 15px;")
 
     def close(self) -> None:
         self.database_pooler.stop()  # Hentikan pooler
@@ -261,10 +262,18 @@ class InventoryWidget(QWidget):
                 return self.tag_item_model.tags.index(find_tag[0])
             return -1
 
+        # 1. Berikan timestamp yang disinkronkan dengan NTP Offset Server IDLAPS
+        server_datetime = datetime.now() + timedelta(seconds=self.time_offset)
+        tag.timestamp = server_datetime.strftime("%H:%M:%S.%f")[:-3]
+        
+        # 2. Simpan raw read ke buffer memory SQLite (Untuk SyncWorker)
+        self.tag_item_model.pending_sqlite.append(tag)
+
+        # 3. Update tampilan layar UI (Log Histori GUI)
         index_tag = find_tag_index(tag)
-        if index_tag < 0:  # Insert tag
+        if index_tag < 0:  # Insert tag baru ke layar
             self.tag_item_model.insert(tag)
-        else:  # Update tag
+        else:  # Update tag count saja, UI array tidak membongsor
             tag.count = self.tag_item_model.tags[index_tag].count + 1
             self.tag_item_model.update(tag)
 
@@ -283,7 +292,7 @@ class InventoryTagItemModel(QAbstractTableModel):
         super().__init__()
         self.parent = parent
         self.tags: list[Tag] = []
-        self.allowed_minutes = 5  # default
+        self.pending_sqlite: list[Tag] = []  # Buffer khusus untuk dikirim ke SQLite
 
     def rowCount(
         self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex
@@ -333,13 +342,20 @@ class InventoryTagItemModel(QAbstractTableModel):
                 return bg_brush
 
     def insert(self, tag: Tag) -> None:
-        tag.timestamp = datetime.now().strftime("%H:%M:%S.%f")[
-            :-3
-        ]  # Tambahkan timestamp
+        if not hasattr(tag, 'timestamp') or not tag.timestamp:
+            tag.timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            
         row_count = len(self.tags)
+        
+        # FIFO Cap: Maksimal 2000 baris agar UI tetap smooth dan RAM enteng
+        if row_count >= 2000:
+            self.beginRemoveRows(QModelIndex(), 0, 0)
+            self.tags.pop(0)
+            self.endRemoveRows()
+            row_count -= 1
+            
         self.beginInsertRows(QModelIndex(), row_count, row_count)
         self.tags.append(tag)
-        row_count += 1
         self.endInsertRows()
 
     def remove(self, index: int) -> None:
@@ -374,85 +390,6 @@ class InventoryTagItemModel(QAbstractTableModel):
             elif orientation == Qt.Vertical:
                 return section + 1
         return None
-
-
-# class DatabasePooler:
-#     def __init__(self, model: InventoryTagItemModel, interval: int = 3):
-#         self.model = model
-#         self.interval = interval
-#         self.timer = None
-
-#     def create_table(self):
-#         connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
-#         cursor = connection.cursor()
-#         cursor.execute("""
-#         CREATE TABLE IF NOT EXISTS inventory (
-#             epc TEXT PRIMARY KEY,
-#             timestamp TEXT
-#         )
-#         """)
-#         # NEW
-#         cursor.execute("""
-#             CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc);
-#         """)
-#         connection.commit()
-#         connection.close()
-
-#     def start(self):
-#         self.timer = Timer(self.interval, self.send_data)
-#         self.timer.start()
-
-#     def stop(self):
-#         if self.timer:
-#             self.timer.cancel()
-
-#     def send_data(self):
-#         tags_to_send = self.model.tags.copy()  # Salin data dari model
-
-#         # NEW
-#         # try:
-#         #     connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
-#         #     cursor = connection.cursor()
-
-#         #     # Batch insert
-#         #     cursor.executemany("""
-#         #     INSERT INTO inventory (epc, timestamp)
-#         #     VALUES (?, ?)
-#         #     """, [(str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp) for tag in tags_to_send])
-#         #     connection.commit()
-#         #     connection.close()
-
-#         #     # Hapus semua dari model jika berhasil
-#         #     self.model.tags.clear()
-#         # except sqlite3.OperationalError as e:
-#         #     print(f"Error saving tags to database: {e}")
-
-#         for tag in tags_to_send:
-#             try:
-#                 connection = sqlite3.connect("inventory.db", check_same_thread=False, timeout=10)
-#                 cursor = connection.cursor()
-#                 cursor.execute("""
-#                 INSERT INTO inventory (epc, timestamp)
-#                 VALUES (?, ?)
-#                 """, (str(hex_readable(tag.data)).replace(" ", ""), tag.timestamp))
-#                 connection.commit()
-#                 connection.close()
-
-#                 # Hapus dari model jika berhasil
-#                 index = self.model.tags.index(tag)
-#                 self.model.remove(index)
-#             except sqlite3.IntegrityError as e:
-#                 if "UNIQUE constraint failed" in str(e):
-#                     # Jangan cetak error jika duplikat primary key
-#                     pass
-#                 else:
-#                     print(f"IntegrityError for tag {tag.data}: {e}")
-#             except Exception as e:
-#                 print(f"Error saving tag {tag.data} to database: {e}")
-
-#         # Jalankan ulang pengiriman
-#         self.start()
-
 
 class DatabasePooler:
     def __init__(self, model: InventoryTagItemModel, interval: int = 3, reader_id: str = None):
@@ -505,130 +442,44 @@ class DatabasePooler:
             self.timer.cancel()
 
     def send_data(self):
-        tags_to_send = self.model.tags.copy()
+        # Ambil buffer SQLite lalu KOSONGKAN supaya RAM bersih (Layar GUI tetap utuh meratap)
+        tags_to_send = self.model.pending_sqlite.copy()
+        self.model.pending_sqlite.clear()
 
-        if not tags_to_send:  # skip jika tidak ada tag
+        if not tags_to_send:  # skip jika tidak ada tag di 3s window
             self.start()
             return
-
-        allowed_minutes = getattr(self.model, "allowed_minutes", 5)
-
-        # Kumpulkan semua EPC unik dari batch ini
-        epc_list = list({
-            str(hex_readable(tag.data)).replace(" ", "")
-            for tag in tags_to_send
-        })
 
         try:
             conn = self.connect()
             cursor = conn.cursor()
 
-            # ─────────────────────────────────────────────────────────────────────────────
-            # 1. Pemetaan EPC ke BIB untuk mencegah ganda Multi-Tag
-            #    SQLite: placeholder ? dan IN (?,?,?) bukan ANY(%s)
-            # ─────────────────────────────────────────────────────────────────────────────
-            placeholders_epc = ",".join(["?"] * len(epc_list))
-            cursor.execute(
-                f"SELECT epc, bib_number FROM epc WHERE epc IN ({placeholders_epc})",
-                epc_list
-            )
-            epc_to_bib = {}
-            bib_list = []
-            for row in cursor.fetchall():
-                epc_to_bib[row[0]] = row[1]
-                if row[1] not in bib_list:
-                    bib_list.append(row[1])
-
-            # ─────────────────────────────────────────────────────────────────────────────
-            # 2. Ambil History Waktu Terakhir berdasarkan BIB, bukan EPC!
-            # ─────────────────────────────────────────────────────────────────────────────
-            db_state = {}
-            if bib_list:
-                placeholders_bib = ",".join(["?"] * len(bib_list))
-                cursor.execute(f"""
-                    SELECT
-                        e.bib_number,
-                        MAX(i.timestamp)  AS last_timestamp,
-                        COUNT(i.id)       AS existing_lap,
-                        cat.lap           AS allowed_laps
-                    FROM inventory i
-                    JOIN epc e        ON i.epc = e.epc
-                    JOIN category cat ON e.category_id = cat.id
-                    WHERE e.bib_number IN ({placeholders_bib})
-                    GROUP BY e.bib_number, cat.lap
-                """, bib_list)
-
-                for row in cursor.fetchall():
-                    db_state[row[0]] = {
-                        "last_timestamp": row[1],
-                        "existing_lap":   int(row[2]),
-                        "allowed_laps":   int(row[3]),
-                    }
-
-            # ─────────────────────────────────────────────────────────────────────────────
-            # 3. Validasi & kumpulkan insert yang lolos, pisahkan yang ditolak
-            # ─────────────────────────────────────────────────────────────────────────────
-            valid_inserts  = []   # [(epc, timestamp)]
-            tags_to_remove = []   # tag yang aman dihapus dari GUI
+            valid_inserts  = []   # [(epc, timestamp, reader_id, synced)]
 
             for tag in tags_to_send:
                 epc_str      = str(hex_readable(tag.data)).replace(" ", "")
                 current_time = tag.timestamp
-                should_insert = True
-                bib_num = epc_to_bib.get(epc_str)
-
-                if bib_num and bib_num in db_state:
-                    state       = db_state[bib_num]
-                    last_ts     = state["last_timestamp"]
-                    existing_lap = state["existing_lap"]
-                    allowed_laps = state["allowed_laps"]
-
-                    last_dt    = datetime.strptime(last_ts, "%H:%M:%S.%f")
-                    current_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
-                    diff_min   = abs((current_dt - last_dt).total_seconds()) / 60
-
-                    if diff_min < allowed_minutes or existing_lap >= allowed_laps:
-                        should_insert = False
-
-                if should_insert:
-                    valid_inserts.append((epc_str, str(current_time), self.reader_id))
-                    # Cegah kembar EPC pada iterasi array yang sama dengan inject memori
-
-                    if bib_num:
-                        if bib_num in db_state:
-                            db_state[bib_num]["last_timestamp"] = current_time
-                            db_state[bib_num]["existing_lap"] += 1
-                        else:
-                            db_state[bib_num] = {"last_timestamp": current_time, "existing_lap": 1, "allowed_laps": 100}
-
-                # Tag selalu masuk antrian hapus (insert maupun skip)
-                tags_to_remove.append(tag)
+                
+                # Masukkan Mentah-mentah (Gateway Mode Online)
+                valid_inserts.append((epc_str, str(current_time), self.reader_id, 0))
 
             # ─────────────────────────────────────────────────────────────────────────────
-            # Satu bulk INSERT (executemany) untuk semua tag yang lolos validasi
+            # Satu bulk INSERT (executemany) untuk semua antrian di batch ini
             # ─────────────────────────────────────────────────────────────────────────────
             if valid_inserts:
                 cursor.executemany(
-                    "INSERT INTO inventory (epc, timestamp, reader_id) VALUES (?, ?, ?)",
+                    "INSERT INTO inventory (epc, timestamp, reader_id, synced) VALUES (?, ?, ?, ?)",
                     valid_inserts
                 )
 
             conn.commit()
-
-
-            # ─────────────────────────────────────────────────────────────────────────────
-            # Hapus dari GUI hanya setelah commit DB berhasil
-            # ─────────────────────────────────────────────────────────────────────────────
-            for tag in reversed(tags_to_remove):
-                index = self.model.tags.index(tag)
-                self.model.remove(index)
-
             cursor.close()
             conn.close()
 
         except Exception as e:
             print(f"[ERROR] Database operation failed: {e}")
-            # Tag TIDAK dihapus dari GUI → akan dicoba lagi di siklus berikutnya
+            # Jika gagal insert SQLite, kembalikan ke buffer depan agar dicoba lagi 3 detik kemudian
+            self.model.pending_sqlite = tags_to_send + self.model.pending_sqlite
 
         self.start()
 

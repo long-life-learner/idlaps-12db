@@ -35,7 +35,7 @@ class MainTab(Enum):
 class _MainTabWidget(QTabWidget):
     device_info_signal = Signal(type)
 
-    def __init__(self, reader: Reader, reader_id: str = None) -> None:
+    def __init__(self, reader: Reader, reader_id: str = None, time_offset: float = 0.0) -> None:
         super().__init__()
 
         logger.info(f"_MainTabWidget() > __init__()")
@@ -43,7 +43,7 @@ class _MainTabWidget(QTabWidget):
         #RIKZA
         self.reader_settings_widget = ReaderSettingsWidget(reader)
         self.reader_settings_widget.on_reboot_signal.connect(self.__receive_signal_on_reboot)
-        self.inventory_widget = InventoryWidget(reader, reader_id=reader_id)
+        self.inventory_widget = InventoryWidget(reader, reader_id=reader_id, time_offset=time_offset)
 
         self.read_write_lock_kill_widget = ReadWriteLockKillWidget(reader)
         self.read_write_lock_kill_widget.is_read_write_lock_kill_signal.connect(
@@ -111,8 +111,7 @@ class _MainTabWidget(QTabWidget):
 
 
 class MainWidget(QWidget):
-    def __init__(self, reader: Reader, reader_id: str = None) -> None:
-    # def __init__(self, reader: None) -> None:
+    def __init__(self, reader: Reader, reader_id: str = None, time_offset: float = 0.0) -> None:
         super().__init__()
         logger.info(f"MainWidget() > __init__()")
 
@@ -123,26 +122,13 @@ class MainWidget(QWidget):
         self.menu_bar = QMenuBar()
         self.help_menu = QMenu("Help")
         self.help_menu.addAction("About", lambda: show_message_box("About",
-                                                                   "This is a demo application for <br>Electron "
-                                                                   "<u>EL-UHF-RC Series</u> UHF RFID Reader:"
-                                                                   "<br><br>"
-                                                                   "- <a href='https://www.electron.id/produk/el-uhf-rc4-2/'>EL-UHF-RC4-2 Std</a><br>"
-                                                                   "- <a href='https://www.electron.id/produk/el-uhf-rc4-2/'>EL-UHF-RC4-2 TCP/IP</a><br>"
-                                                                   "- <a href='https://www.electron.id/produk/el-uhf-rc4-62/'>EL-UHF-RC4-62-T</a><br>"
-                                                                   "- <a href='https://www.electron.id/produk/el-uhf-rc4-91/'>EL-UHF-RC4-91-T</a><br>"
-                                                                   "- <a href='https://www.electron.id/produk/el-uhf-rc4-c1/'>EL-UHF-RC4-C1-T</a><br>"
-                                                                   "<br>"
-                                                                   "Please contact <a "
-                                                                   "href='mailto:sales@electron.id'>sales@electron.id"
-                                                                   "</a> for more information."
-                                                                   "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-                                                                   "<br><br>"
+                                                                   "IDLaps Checkpoint"
                                                                    f"Software version {os.getenv('VERSION')}",
                                                                    success=True, with_icon=True))
         self.menu_bar.addMenu(self.help_menu)
 
         # RIKZA
-        self.tab = _MainTabWidget(reader, reader_id=reader_id)
+        self.tab = _MainTabWidget(reader, reader_id=reader_id, time_offset=time_offset)
 
         self.log_widget = LogWidget(reader)
 
