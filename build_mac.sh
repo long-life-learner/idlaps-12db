@@ -6,6 +6,8 @@
 #   ./build_mac.sh online     → Build IDLAPS-Online.app
 #   ./build_mac.sh offline    → Build IDLAPS-Offline.app
 #   ./build_mac.sh all        → Build both (default)
+#
+# Fix: Ad-hoc codesign + xattr -cr so macOS doesn't block the app
 # =================================================================
 
 set -e
@@ -19,7 +21,7 @@ echo "=================================================="
 
 # Validasi Python & pyinstaller tersedia
 if ! command -v python3 &> /dev/null; then
-    echo "[ERROR] python3 tidak ditemukan. Install dulu via: brew install python3"
+    echo "[ERROR] python3 tidak ditemukan."
     exit 1
 fi
 
@@ -35,15 +37,32 @@ if [ ! -f ".env.production" ]; then
     cp .env.example .env.production
 fi
 
-# Bersihkan cache build lama
+# Bersihkan cache build lama (termasuk dist agar tidak ada NotADirectoryError)
 echo "[INFO] Membersihkan cache build lama..."
 rm -rf build/
-find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+rm -rf dist/IDLAPS-Online dist/IDLAPS-Online.app 2>/dev/null || true
+rm -rf dist/IDLAPS-Offline dist/IDLAPS-Offline.app 2>/dev/null || true
+find . -maxdepth 2 -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+# ─── Helper: sign & strip quarantine ──────────────────────────────────────────
+# codesign --deep -s - : ad-hoc signature (tidak perlu Apple Developer Account)
+# xattr -cr            : hapus com.apple.quarantine agar Gatekeeper tidak blokir
+sign_and_clear_quarantine() {
+    local APP="$1"
+    if [ -d "$APP" ]; then
+        echo "[INFO] Signing (ad-hoc): $APP"
+        codesign --force --deep --sign - "$APP" 2>&1 || echo "[WARN] codesign gagal (lanjut saja)"
+        echo "[INFO] Clearing quarantine: $APP"
+        xattr -cr "$APP" 2>/dev/null || true
+        echo "[OK] App siap dibuka tanpa Gatekeeper block."
+    fi
+}
 
 build_online() {
     echo ""
     echo "--- [1/2] Building: IDLAPS-Online.app ---"
     python3 -m PyInstaller --clean --noconfirm app-online.spec
+    sign_and_clear_quarantine "dist/IDLAPS-Online.app"
     echo "[OK] IDLAPS-Online.app selesai → dist/IDLAPS-Online.app"
 }
 
@@ -51,6 +70,7 @@ build_offline() {
     echo ""
     echo "--- [2/2] Building: IDLAPS-Offline.app ---"
     python3 -m PyInstaller --clean --noconfirm app-offline.spec
+    sign_and_clear_quarantine "dist/IDLAPS-Offline.app"
     echo "[OK] IDLAPS-Offline.app selesai → dist/IDLAPS-Offline.app"
 }
 
@@ -70,6 +90,10 @@ esac
 echo ""
 echo "=================================================="
 echo " Build Selesai! Cek folder dist/"
-echo " - dist/IDLAPS-Online.app"
-echo " - dist/IDLAPS-Offline.app"
+[ "$MODE" = "online" ] || [ "$MODE" = "all" ]  && echo " - dist/IDLAPS-Online.app"
+[ "$MODE" = "offline" ] || [ "$MODE" = "all" ] && echo " - dist/IDLAPS-Offline.app"
+echo ""
+echo " Cara buka jika masih terblokir Gatekeeper:"
+echo "   Kanan-klik .app → Open → Open"
+echo "   atau: System Preferences → Privacy & Security → Open Anyway"
 echo "=================================================="
