@@ -240,7 +240,7 @@ class ConnectTcpWidget(QWidget):
         lbl = QLabel(display_text)
         del_btn = QPushButton("×")
         del_btn.setFixedSize(20, 20)
-        del_btn.setStyleSheet("color: red; font-weight: bold; border: none;")
+        del_btn.setStyleSheet("color: #f38ba8; font-weight: bold; border: none; background: transparent;")
         del_btn.clicked.connect(lambda: self.ip_list_widget.takeItem(self.ip_list_widget.row(item)))
         
         widget_layout.addWidget(lbl)

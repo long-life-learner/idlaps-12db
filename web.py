@@ -594,7 +594,7 @@ def get_categories():
 
 
 def start_web_server():
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=os.getenv("PORT", 5001), debug=False, use_reloader=False)
 
 if __name__ == "__main__":
     success, msg = initialize_database()

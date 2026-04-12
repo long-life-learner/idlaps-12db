@@ -97,7 +97,7 @@ class InventoryWidget(QWidget):
 
         # Indikator Unsynced Data In Wait
         self.unsynced_label = QLabel("🟢 Data in Wait: 0")
-        self.unsynced_label.setStyleSheet("font-weight: bold; color: green; padding-left: 15px;")
+        self.unsynced_label.setStyleSheet("font-weight: bold; color: #a6e3a1; padding-left: 15px;")
 
         h_layout = QHBoxLayout()
         h_layout.addWidget(self.start_stop_button)
@@ -123,10 +123,10 @@ class InventoryWidget(QWidget):
     def update_unsynced_count(self, count: int) -> None:
         if count > 0:
             self.unsynced_label.setText(f"🟡 Data in Wait: {count}")
-            self.unsynced_label.setStyleSheet("font-weight: bold; color: darkorange; padding-left: 15px;")
+            self.unsynced_label.setStyleSheet("font-weight: bold; color: #fab387; padding-left: 15px;")
         else:
             self.unsynced_label.setText("🟢 Data in Wait: 0")
-            self.unsynced_label.setStyleSheet("font-weight: bold; color: green; padding-left: 15px;")
+            self.unsynced_label.setStyleSheet("font-weight: bold; color: #a6e3a1; padding-left: 15px;")
 
     def close(self) -> None:
         self.database_pooler.stop()  # Hentikan pooler
@@ -337,7 +337,7 @@ class InventoryTagItemModel(QAbstractTableModel):
         if role == Qt.BackgroundRole:
             if index.row() % 2 == 0:
                 bg_brush = QBrush()
-                bg_brush.setColor(QColor.fromRgb(216, 216, 216))
+                bg_brush.setColor(QColor.fromRgb(49, 50, 68))  # #313244 dark theme alternate
                 bg_brush.setStyle(Qt.SolidPattern)
                 return bg_brush
 

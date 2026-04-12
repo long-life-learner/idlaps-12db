@@ -11,7 +11,7 @@ from rfid.response import Status, ResponseReadMemory, ResponseWriteMemory
 from rfid.status import TagStatus
 from rfid.utils import hex_readable
 from ui.thread.read_write_thread import ReadThread, WriteThread
-from ui.utils import show_message_box
+from ui.utils import setup_input_widget, show_message_box
 
 
 COLUMNS = ["PC", "CRC", "EPC", "Data length", "Data", "Antenna", "Count"]
@@ -49,7 +49,7 @@ class ReadMemoryItemModel(QAbstractTableModel):
         if role == Qt.BackgroundRole:
             if index.row() % 2 == 0:
                 bg_brush = QBrush()
-                bg_brush.setColor(QColor.fromRgb(216, 216, 216))
+                bg_brush.setColor(QColor.fromRgb(49, 50, 68))  # #313244 dark theme alternate
                 bg_brush.setStyle(Qt.SolidPattern)
                 return bg_brush
 
@@ -108,43 +108,49 @@ class ReadWriteWidget(QWidget):
 
         # GroupBox Lock
         read_write_group_box = QGroupBox("Read/write memory")
+        read_write_group_box.setMinimumHeight(150)
         memory_bank_label = QLabel("Memory bank")
-        memory_bank_label.setMinimumWidth(60)
+        memory_bank_label.setMinimumWidth(90)
         access_password_label = QLabel("Access password")
-        access_password_label.setMinimumWidth(60)
+        access_password_label.setMinimumWidth(110)
         start_address_label = QLabel("Start address")
-        start_address_label.setMinimumWidth(60)
+        start_address_label.setMinimumWidth(90)
         length_label = QLabel("Length")
-        length_label.setMinimumWidth(60)
+        length_label.setMinimumWidth(90)
         data_label = QLabel("Data to write")
-        data_label.setMinimumWidth(60)
+        data_label.setMinimumWidth(90)
 
         word_start_address_label = QLabel("word")
-        word_start_address_label.setMinimumWidth(40)
+        word_start_address_label.setMinimumWidth(36)
         word_length_label = QLabel("word")
-        word_length_label.setMinimumWidth(40)
+        word_length_label.setMinimumWidth(36)
 
         self.memory_bank_combo_box = QComboBox()
         self.memory_bank_combo_box.addItems([str(memory_bank) for memory_bank in MemoryBank])
         self.memory_bank_combo_box.setCurrentIndex(MemoryBank.EPC.value)
-        self.memory_bank_combo_box.setMinimumWidth(100)
+        setup_input_widget(self.memory_bank_combo_box)
+
         self.access_password_line_edit = QLineEdit()
         self.access_password_line_edit.setMaxLength(8)
         self.access_password_line_edit.setText("00000000")
         self.access_password_line_edit.setValidator(QRegularExpressionValidator("^[0-9a-fA-F]{0,8}$"))
         self.access_password_line_edit.textEdited.connect(self.__access_password_line_edit_edited)
         self.access_password_line_edit.editingFinished.connect(self.__access_password_line_edit_finished)
+        setup_input_widget(self.access_password_line_edit)
+
         self.data_line_edit = QLineEdit()
         self.data_line_edit.setValidator(QRegularExpressionValidator("^[0-9a-fA-F]+"))
         self.data_line_edit.textEdited.connect(self.data_line_edit_edited)
+        setup_input_widget(self.data_line_edit, min_width=200)
 
         self.start_address_spin_box = QSpinBox()
         self.start_address_spin_box.setValue(2)
-        self.start_address_spin_box.setMinimumWidth(100)
         self.start_address_spin_box.setRange(0, 65535)
+        setup_input_widget(self.start_address_spin_box)
+
         self.length_spin_box = QSpinBox()
         self.length_spin_box.setRange(1, 255)
-        self.length_spin_box.setMinimumWidth(100)
+        setup_input_widget(self.length_spin_box)
 
         self.read_button = QPushButton("Read")
         self.read_button.clicked.connect(self.__read_clicked)
@@ -163,6 +169,10 @@ class ReadWriteWidget(QWidget):
         h_length_layout.addWidget(word_length_label)
 
         read_write_grid_layout = QGridLayout()
+        read_write_grid_layout.setColumnStretch(1, 1)  # memory bank / start addr / data widget cols
+        read_write_grid_layout.setColumnStretch(3, 1)  # access password / length / data (span) widget cols
+        read_write_grid_layout.setHorizontalSpacing(8)
+        read_write_grid_layout.setVerticalSpacing(10)
 
         read_write_grid_layout.addWidget(memory_bank_label, 0, 0)
         read_write_grid_layout.addWidget(self.memory_bank_combo_box, 0, 1)
@@ -184,6 +194,7 @@ class ReadWriteWidget(QWidget):
         layout.setSpacing(0)
         layout.setContentsMargins(1, 1, 1, 1)
         self.setLayout(layout)
+
 
     def close(self) -> None:
         if self.read_thread:

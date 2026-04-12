@@ -11,7 +11,7 @@ from rfid.reader import Reader
 from ui.connect_widget import ConnectWidget
 from ui.multi_reader_main_widget import MultiReaderMainWidget
 
-from ui.utils import pyinstaller_resource_path
+from ui.utils import pyinstaller_resource_path, apply_app_style
 from util_log import setup_logging
 from ui.thread.inventory_thread import InventoryThread
 
@@ -70,25 +70,25 @@ class Main:
             # Jalankan web server Flask lokal & buka browser
             logger.info("Main() > Offline Mode: menyalakan Flask web server lokal")
             threading.Thread(target=start_web_server, daemon=True).start()
-            QDesktopServices.openUrl(QUrl("http://localhost:5000/"))
+            QDesktopServices.openUrl(QUrl(f"http://localhost:{os.getenv('PORT', 5001)}/"))
             
             
         
             
-        logger.info("Main() > Menampilkan ConnectWidget")
-        self.connect_widget = ConnectWidget()
-        self.connect_widget.readers_connected_signal.connect(
-            self.__receive_signal_readers_from_connect_widget
-        )
-        self.connect_widget.show()    
+        # logger.info("Main() > Menampilkan ConnectWidget")
+        # self.connect_widget = ConnectWidget()
+        # self.connect_widget.readers_connected_signal.connect(
+        #     self.__receive_signal_readers_from_connect_widget
+        # )
+        # self.connect_widget.show()    
 
         # DEBUG MODE : BYPASS CONNECT WIDGET
         
-        # logger.info("Main() > Bypass ConnectWidget")
-        # self.connect_widget = None
-        # self.readers = [Reader()]
-        # self.main_widget = MultiReaderMainWidget(self.readers)
-        # self.main_widget.show()
+        logger.info("Main() > Bypass ConnectWidget")
+        self.connect_widget = None
+        self.readers = [Reader()]
+        self.main_widget = MultiReaderMainWidget(self.readers)
+        self.main_widget.show()
 
         # Inisialisasi Reader tanpa transport
         self.reader = Reader()
@@ -117,6 +117,7 @@ if __name__ == "__main__":
     setup_logging()
 
     app = QApplication(sys.argv)
+    apply_app_style(app)
 
     app_mode = os.getenv("APP_MODE", "online").lower()
 
