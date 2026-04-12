@@ -115,7 +115,7 @@ class InventoryWidget(QWidget):
 
         self.stop_after_combo_box.setCurrentIndex(StopAfter.TIME.value)
         self.reader_id = reader_id
-        self.database_pooler = DatabasePooler(self.tag_item_model, reader_id=self.reader_id)
+        self.database_pooler = create_database_pooler(self.tag_item_model, reader_id=self.reader_id)
         self.database_pooler.start()
 
 
@@ -392,26 +392,26 @@ class InventoryTagItemModel(QAbstractTableModel):
         return None
 
 class DatabasePooler:
+    """Base class: koneksi SQLite, create table, timer loop."""
+
     def __init__(self, model: InventoryTagItemModel, interval: int = 3, reader_id: str = None):
         self.model = model
         self.interval = interval
         self.reader_id = reader_id
         self.timer = None
         self.db_path = get_db_path()
-
-        # Pastikan tabel dibuat dengan parameter terbaru
         self.create_table()
-
 
     def connect(self) -> sqlite3.Connection:
         """Buka koneksi SQLite dengan WAL mode aktif."""
         conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")   # izinkan banyak reader + 1 writer
-        conn.execute("PRAGMA synchronous=NORMAL")  # lebih cepat, masih aman
-        conn.execute("PRAGMA busy_timeout=30000")  # tunggu 30 detik sebelum error
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
     def create_table(self):
+        """Skema terpadu: selalu ada kolom synced (dipakai Online, diabaikan Offline)."""
         try:
             conn = self.connect()
             cursor = conn.cursor()
@@ -420,13 +420,16 @@ class DatabasePooler:
                     id        INTEGER PRIMARY KEY AUTOINCREMENT,
                     epc       TEXT,
                     timestamp TEXT,
-                    reader_id TEXT
+                    reader_id TEXT,
+                    synced    INTEGER NOT NULL DEFAULT 0
                 )
             """)
-
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc)"
-            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_epc ON inventory (epc)")
+            # Migrasi: tambah kolom synced jika belum ada (DB lama)
+            try:
+                cursor.execute("ALTER TABLE inventory ADD COLUMN synced INTEGER NOT NULL DEFAULT 0")
+            except Exception:
+                pass  # Kolom sudah ada — abaikan
             conn.commit()
             cursor.close()
             conn.close()
@@ -442,11 +445,22 @@ class DatabasePooler:
             self.timer.cancel()
 
     def send_data(self):
-        # Ambil buffer SQLite lalu KOSONGKAN supaya RAM bersih (Layar GUI tetap utuh meratap)
+        raise NotImplementedError("Subclass harus mengimplementasikan send_data()")
+
+
+class DatabasePoolerOnline(DatabasePooler):
+    """
+    Mode Online (Gateway): bulk insert mentah dari pending_sqlite buffer.
+    Tidak ada filter lap/menit — server yang handle duplikat.
+    GUI (self.tags) TIDAK dihapus agar panitia tetap melihat log.
+    """
+
+    def send_data(self):
+        # Ambil dari buffer terpisah, bukan self.model.tags
         tags_to_send = self.model.pending_sqlite.copy()
         self.model.pending_sqlite.clear()
 
-        if not tags_to_send:  # skip jika tidak ada tag di 3s window
+        if not tags_to_send:
             self.start()
             return
 
@@ -454,33 +468,149 @@ class DatabasePooler:
             conn = self.connect()
             cursor = conn.cursor()
 
-            valid_inserts  = []   # [(epc, timestamp, reader_id, synced)]
+            valid_inserts = [
+                (str(hex_readable(tag.data)).replace(" ", ""), str(tag.timestamp), self.reader_id, 0)
+                for tag in tags_to_send
+            ]
 
-            for tag in tags_to_send:
-                epc_str      = str(hex_readable(tag.data)).replace(" ", "")
-                current_time = tag.timestamp
-                
-                # Masukkan Mentah-mentah (Gateway Mode Online)
-                valid_inserts.append((epc_str, str(current_time), self.reader_id, 0))
-
-            # ─────────────────────────────────────────────────────────────────────────────
-            # Satu bulk INSERT (executemany) untuk semua antrian di batch ini
-            # ─────────────────────────────────────────────────────────────────────────────
             if valid_inserts:
                 cursor.executemany(
                     "INSERT INTO inventory (epc, timestamp, reader_id, synced) VALUES (?, ?, ?, ?)",
                     valid_inserts
                 )
-
             conn.commit()
             cursor.close()
             conn.close()
 
         except Exception as e:
-            print(f"[ERROR] Database operation failed: {e}")
-            # Jika gagal insert SQLite, kembalikan ke buffer depan agar dicoba lagi 3 detik kemudian
+            print(f"[ERROR][Online] Database operation failed: {e}")
+            # Kembalikan ke buffer agar dicoba lagi
             self.model.pending_sqlite = tags_to_send + self.model.pending_sqlite
 
         self.start()
 
 
+class DatabasePoolerOffline(DatabasePooler):
+    """
+    Mode Offline (Flask Local): insert dengan filter EPC/lap/menit.
+    Hapus tag dari GUI setelah berhasil tersimpan ke SQLite.
+    """
+
+    def send_data(self):
+        tags_to_send = self.model.tags.copy()
+
+        if not tags_to_send:
+            self.start()
+            return
+
+        allowed_minutes = getattr(self.model, "allowed_minutes", 5)
+
+        epc_list = list({str(hex_readable(tag.data)).replace(" ", "") for tag in tags_to_send})
+
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            # 1. Pemetaan EPC → BIB
+            placeholders_epc = ",".join(["?"] * len(epc_list))
+            cursor.execute(
+                f"SELECT epc, bib_number FROM epc WHERE epc IN ({placeholders_epc})",
+                epc_list
+            )
+            epc_to_bib = {}
+            bib_list = []
+            for row in cursor.fetchall():
+                epc_to_bib[row[0]] = row[1]
+                if row[1] not in bib_list:
+                    bib_list.append(row[1])
+
+            # 2. Ambil history waktu terakhir per BIB
+            db_state = {}
+            if bib_list:
+                placeholders_bib = ",".join(["?"] * len(bib_list))
+                cursor.execute(f"""
+                    SELECT e.bib_number, MAX(i.timestamp), COUNT(i.id), cat.lap
+                    FROM inventory i
+                    JOIN epc e        ON i.epc = e.epc
+                    JOIN category cat ON e.category_id = cat.id
+                    WHERE e.bib_number IN ({placeholders_bib})
+                    GROUP BY e.bib_number, cat.lap
+                """, bib_list)
+                for row in cursor.fetchall():
+                    db_state[row[0]] = {
+                        "last_timestamp": row[1],
+                        "existing_lap":   int(row[2]),
+                        "allowed_laps":   int(row[3]),
+                    }
+
+            # 3. Validasi & kumpulkan insert
+            valid_inserts  = []
+            tags_to_remove = []
+
+            for tag in tags_to_send:
+                epc_str      = str(hex_readable(tag.data)).replace(" ", "")
+                current_time = tag.timestamp
+                should_insert = True
+                bib_num = epc_to_bib.get(epc_str)
+
+                if bib_num and bib_num in db_state:
+                    state        = db_state[bib_num]
+                    last_ts      = state["last_timestamp"]
+                    existing_lap = state["existing_lap"]
+                    allowed_laps = state["allowed_laps"]
+
+                    last_dt    = datetime.strptime(last_ts, "%H:%M:%S.%f")
+                    current_dt = datetime.strptime(current_time, "%H:%M:%S.%f")
+                    diff_min   = abs((current_dt - last_dt).total_seconds()) / 60
+
+                    if diff_min < allowed_minutes or existing_lap >= allowed_laps:
+                        should_insert = False
+
+                if should_insert:
+                    valid_inserts.append((epc_str, str(current_time), self.reader_id))
+                    if bib_num:
+                        if bib_num in db_state:
+                            db_state[bib_num]["last_timestamp"] = current_time
+                            db_state[bib_num]["existing_lap"] += 1
+                        else:
+                            db_state[bib_num] = {"last_timestamp": current_time, "existing_lap": 1, "allowed_laps": 100}
+
+                tags_to_remove.append(tag)
+
+            if valid_inserts:
+                cursor.executemany(
+                    "INSERT INTO inventory (epc, timestamp, reader_id) VALUES (?, ?, ?)",
+                    valid_inserts
+                )
+
+            conn.commit()
+
+            # Hapus dari GUI setelah commit berhasil
+            for tag in reversed(tags_to_remove):
+                try:
+                    index = self.model.tags.index(tag)
+                    self.model.remove(index)
+                except ValueError:
+                    pass
+
+            cursor.close()
+            conn.close()
+
+        except Exception as e:
+            print(f"[ERROR][Offline] Database operation failed: {e}")
+            # Tag TIDAK dihapus dari GUI → dicoba ulang di siklus berikutnya
+
+        self.start()
+
+
+def create_database_pooler(
+    model: InventoryTagItemModel,
+    interval: int = 3,
+    reader_id: str = None
+) -> DatabasePooler:
+    """Factory: pilih subclass DatabasePooler berdasarkan APP_MODE di environment."""
+    import os
+    app_mode = os.getenv("APP_MODE", "online").lower()
+    if app_mode == "offline":
+        return DatabasePoolerOffline(model, interval=interval, reader_id=reader_id)
+    return DatabasePoolerOnline(model, interval=interval, reader_id=reader_id)

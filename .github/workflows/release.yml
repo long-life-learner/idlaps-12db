@@ -1,0 +1,238 @@
+name: Build & Release IDLAPS Checkpoint
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TRIGGER: Push tag v*.*.* dari branch online (default branch)
+# SATU workflow — EMPAT artifact (win-online, win-offline, mac-online, mac-offline)
+#
+# Cara pakai:
+#   git checkout online
+#   git tag v1.2.0
+#   git push origin v1.2.0
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable steps sebagai job-level env
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 1: Windows — Online Mode
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-windows-online:
+    name: 🪟 Windows — Online
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: online   # ← Selalu dari branch online
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Write .env.production (Online Mode)
+        shell: bash
+        run: |
+          echo "APP_NAME=${{ secrets.APP_NAME }}" > .env.production
+          echo "APP_MODE=online" >> .env.production
+          echo "APP_ENV=production" >> .env.production
+          echo "VERSION=${{ github.ref_name }}" >> .env.production
+
+      - name: Build EXE
+        run: pyinstaller --clean --noconfirm app-online.spec
+
+      - name: Zip artifact
+        run: |
+          Compress-Archive -Path dist/IDLAPS-Online.exe `
+            -DestinationPath "dist/IDLAPS-Online-Windows-${{ github.ref_name }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDLAPS-Online-Windows
+          path: dist/IDLAPS-Online-Windows-${{ github.ref_name }}.zip
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 2: Windows — Offline Mode
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-windows-offline:
+    name: 🪟 Windows — Offline
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: online   # ← Tetap dari branch online (kode sama, beda .env saja)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Write .env.production (Offline Mode)
+        shell: bash
+        run: |
+          echo "APP_NAME=${{ secrets.APP_NAME }}" > .env.production
+          echo "APP_MODE=offline" >> .env.production
+          echo "APP_ENV=production" >> .env.production
+          echo "VERSION=${{ github.ref_name }}" >> .env.production
+
+      - name: Build EXE
+        run: pyinstaller --clean --noconfirm app-offline.spec
+
+      - name: Zip artifact
+        run: |
+          Compress-Archive -Path dist/IDLAPS-Offline.exe `
+            -DestinationPath "dist/IDLAPS-Offline-Windows-${{ github.ref_name }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDLAPS-Offline-Windows
+          path: dist/IDLAPS-Offline-Windows-${{ github.ref_name }}.zip
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 3: macOS — Online Mode
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-macos-online:
+    name: 🍎 macOS — Online
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: online
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install pyinstaller PySide6 requests python-dotenv pyserial pyusb
+
+      - name: Write .env.production (Online Mode)
+        run: |
+          echo "APP_NAME=${{ secrets.APP_NAME }}" > .env.production
+          echo "APP_MODE=online" >> .env.production
+          echo "APP_ENV=production" >> .env.production
+          echo "VERSION=${{ github.ref_name }}" >> .env.production
+
+      - name: Build .app
+        run: python3 -m PyInstaller --clean --noconfirm app-online.spec
+
+      - name: Zip .app bundle
+        run: |
+          cd dist && zip -r "IDLAPS-Online-macOS-${{ github.ref_name }}.zip" IDLAPS-Online.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDLAPS-Online-macOS
+          path: dist/IDLAPS-Online-macOS-${{ github.ref_name }}.zip
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 4: macOS — Offline Mode
+  # ═══════════════════════════════════════════════════════════════════════════
+  build-macos-offline:
+    name: 🍎 macOS — Offline
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: online   # ← Tetap dari branch online
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install pyinstaller PySide6 requests python-dotenv pyserial pyusb flask flask-sqlalchemy
+
+      - name: Write .env.production (Offline Mode)
+        run: |
+          echo "APP_NAME=${{ secrets.APP_NAME }}" > .env.production
+          echo "APP_MODE=offline" >> .env.production
+          echo "APP_ENV=production" >> .env.production
+          echo "VERSION=${{ github.ref_name }}" >> .env.production
+
+      - name: Build .app
+        run: python3 -m PyInstaller --clean --noconfirm app-offline.spec
+
+      - name: Zip .app bundle
+        run: |
+          cd dist && zip -r "IDLAPS-Offline-macOS-${{ github.ref_name }}.zip" IDLAPS-Offline.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IDLAPS-Offline-macOS
+          path: dist/IDLAPS-Offline-macOS-${{ github.ref_name }}.zip
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # JOB 5: Kumpulkan semua artifact → Buat GitHub Release
+  # ═══════════════════════════════════════════════════════════════════════════
+  release:
+    name: 🚀 Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-windows-online
+      - build-windows-offline
+      - build-macos-online
+      - build-macos-offline
+    if: always() && !cancelled()
+
+    steps:
+      - name: Download semua artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets/
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "IDLAPS Checkpoint ${{ github.ref_name }}"
+          body: |
+            ## 🏁 IDLAPS Checkpoint — Release ${{ github.ref_name }}
+
+            ### 📦 Download Aplikasi
+
+            | Platform | Mode | File |
+            |---|---|---|
+            | 🪟 Windows | Online (Gateway → time.idlaps.com) | `IDLAPS-Online-Windows-*.zip` |
+            | 🪟 Windows | Offline (Flask localhost:5000) | `IDLAPS-Offline-Windows-*.zip` |
+            | 🍎 macOS | Online | `IDLAPS-Online-macOS-*.zip` |
+            | 🍎 macOS | Offline | `IDLAPS-Offline-macOS-*.zip` |
+
+            ### 🔧 Perbedaan Mode
+            | | **Online** | **Offline** |
+            |---|---|---|
+            | Server | time.idlaps.com | localhost:5000 |
+            | Koneksi Internet | ✅ Required | ❌ Tidak perlu |
+            | SyncThread | ✅ Aktif | ❌ |
+            | NTP Time Sync | ✅ Aktif | ❌ |
+            | Filter Lap/Menit | ❌ (server yang handle) | ✅ |
+
+            ---
+            *Auto-built dari branch `online` | Tag: `${{ github.ref_name }}`*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          files: release-assets/**/*.zip
