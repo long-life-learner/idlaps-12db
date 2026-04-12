@@ -42,7 +42,7 @@ class Main:
         self.readers = readers
         self.main_widget = MultiReaderMainWidget(readers)
         self.connect_widget = None
-        self.main_widget.show()
+        self.main_widget.showMaximized()
 
 
     def start(self, app: QApplication) -> None:
@@ -74,21 +74,23 @@ class Main:
             
             
         
-            
-        # logger.info("Main() > Menampilkan ConnectWidget")
-        # self.connect_widget = ConnectWidget()
-        # self.connect_widget.readers_connected_signal.connect(
-        #     self.__receive_signal_readers_from_connect_widget
-        # )
-        # self.connect_widget.show()    
+        debug_mode = os.getenv("DEBUG_MODE", "false").lower()
 
-        # DEBUG MODE : BYPASS CONNECT WIDGET
+        if debug_mode == "false":
+            logger.info("Main() > Menampilkan ConnectWidget")
+            self.connect_widget = ConnectWidget()
+            self.connect_widget.readers_connected_signal.connect(
+                self.__receive_signal_readers_from_connect_widget
+            )
+            self.connect_widget.showMaximized()
+        else:   
+            logger.info("Main() > Bypass ConnectWidget")
+            self.connect_widget = None
+            self.readers = [Reader()]
+            self.main_widget = MultiReaderMainWidget(self.readers)
+            self.main_widget.showMaximized()
+
         
-        logger.info("Main() > Bypass ConnectWidget")
-        self.connect_widget = None
-        self.readers = [Reader()]
-        self.main_widget = MultiReaderMainWidget(self.readers)
-        self.main_widget.show()
 
         # Inisialisasi Reader tanpa transport
         self.reader = Reader()
