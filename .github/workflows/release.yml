@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: online   # ← Selalu dari branch online
+          ref: main   # ← Selalu dari branch online
 
       - uses: actions/setup-python@v5
         with:
@@ -74,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: online   # ← Tetap dari branch online (kode sama, beda .env saja)
+          ref: main   # ← Tetap dari branch online (kode sama, beda .env saja)
 
       - uses: actions/setup-python@v5
         with:
@@ -115,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: online
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -155,7 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: online   # ← Tetap dari branch online
+          ref: main   # ← Tetap dari branch online
 
       - uses: actions/setup-python@v5
         with:
