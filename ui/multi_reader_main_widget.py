@@ -30,7 +30,7 @@ class MultiReaderMainWidget(QWidget):
 
         self.setWindowTitle(f"{os.getenv('APP_NAME')} - Connected: {len(readers)}")
         set_widget_style(self)
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1100, 700)
 
         self.readers = readers
         self.main_widgets: list[MainWidget] = []

@@ -28,7 +28,8 @@ class Reader(QObject):
 
     def close(self) -> None:
         logger.info(f"Reader() > close() > transport: {self.transport}")
-        self.transport.close()
+        if self.transport is not None:
+            self.transport.close()
 
     def __send_request(self, command: Command, clear_buffer: bool = True) -> None:
         if self.transport is None:

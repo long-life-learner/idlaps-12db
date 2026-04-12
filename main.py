@@ -66,8 +66,8 @@ class Main:
 
         # Open External Browser (DIMATIKAN - User diminta buka Web Dashboard online time.idlaps.com)
         # QDesktopServices.openUrl(QUrl("http://localhost:5000/"))
-
         # --- BYPASS CONNECT WIDGET START ---
+
         # self.connect_widget = ConnectWidget()
         # self.connect_widget.readers_connected_signal.connect(
         #     self.__receive_signal_readers_from_connect_widget
@@ -81,6 +81,7 @@ class Main:
         self.main_widget.show()
         # --- BYPASS CONNECT WIDGET END ---
 
+        
         # Inisialisasi Reader tanpa transport
         self.reader = Reader()
 

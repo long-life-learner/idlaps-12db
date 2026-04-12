@@ -63,8 +63,6 @@ def set_widget_style(widget: QWidget) -> None:
     except Exception:
         pass
 
-    # Fix window size
-    widget.setWindowFlag(Qt.MSWindowsFixedSizeDialogHint)
     # widget.setContentsMargins(1, 1, 1, 1)
 
     # Background color
