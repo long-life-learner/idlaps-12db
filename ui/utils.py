@@ -71,7 +71,7 @@ APP_STYLESHEET = """
     QWidget {
         background-color: #1e1e2e;
         color: #cdd6f4;
-        font-family: "SF Pro Text", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+        font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
         font-size: 13px;
     }
 

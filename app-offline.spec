@@ -8,50 +8,54 @@
 
 import sys
 import os
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
-# ── Detect platform ────────────────────────────────────────────────────────────
 IS_WINDOWS = sys.platform.startswith("win")
 IS_MACOS   = sys.platform.startswith("darwin")
 
-# ── Data files to bundle ───────────────────────────────────────────────────────
+# ── Data files ────────────────────────────────────────────────────────────────
 added_datas = [
-    ("templates",        "templates"),
-    ("static",           "static"),
+    ("templates",       "templates"),
+    ("static",          "static"),
     (".env.production",  "."),
 ]
 
-# ── Hidden imports ─────────────────────────────────────────────────────────────
+# ── Hidden imports ────────────────────────────────────────────────────────────
 hidden = [
     "sqlite3",
-    "PySide6.QtCore",
-    "PySide6.QtGui",
-    "PySide6.QtWidgets",
-    "PySide6.QtNetwork",
-    "flask",
-    "flask_sqlalchemy",
-    "sqlalchemy",
-    "sqlalchemy.dialects.sqlite",
-    "jinja2",
-    "werkzeug",
-    "werkzeug.serving",
-    "requests",
-    "serial",
-    "usb",
-    "dotenv",
+    "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtNetwork",
+    "flask", "flask_sqlalchemy",
+    "sqlalchemy", "sqlalchemy.dialects.sqlite",
+    "jinja2", "werkzeug", "werkzeug.serving",
+    "requests", "serial", "usb", "dotenv",
 ]
 hidden += collect_submodules("PySide6")
 hidden += collect_submodules("flask")
 hidden += collect_submodules("werkzeug")
 hidden += collect_submodules("sqlalchemy")
 
-# ── Analysis ───────────────────────────────────────────────────────────────────
+# ── Binaries: bundle libusb so pyusb works inside .app on macOS ───────────────
+def _find_libusb():
+    for p in [
+        "/opt/homebrew/lib/libusb-1.0.dylib",
+        "/opt/homebrew/lib/libusb-1.0.0.dylib",
+        "/usr/local/lib/libusb-1.0.dylib",
+        "/usr/local/lib/libusb-1.0.0.dylib",
+    ]:
+        if os.path.exists(p):
+            return (p, ".")
+    return None
+
+_lib = _find_libusb()
+added_binaries = [_lib] if _lib else []
+
+# ── Analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(
     ["main.py"],
     pathex=["."],
-    binaries=[],
+    binaries=added_binaries,
     datas=added_datas,
     hiddenimports=hidden,
     hookspath=[],
@@ -66,30 +70,18 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-# ── Platform-specific output ───────────────────────────────────────────────────
+# ── Platform output ───────────────────────────────────────────────────────────
 if IS_MACOS:
-    # ── macOS : one-dir .app bundle ───────────────────────────────────────────
     exe = EXE(
-        pyz,
-        a.scripts,
-        [],
+        pyz, a.scripts, [],
         exclude_binaries=True,
         name="IDLAPS-Offline",
-        debug=False,
-        bootloader_ignore_signals=False,
-        strip=False,
-        upx=False,
-        console=False,
-        target_arch=None,
+        debug=False, bootloader_ignore_signals=False,
+        strip=False, upx=False, console=False, target_arch=None,
     )
     coll = COLLECT(
-        exe,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        strip=False,
-        upx=False,
-        name="IDLAPS-Offline",
+        exe, a.binaries, a.zipfiles, a.datas,
+        strip=False, upx=False, name="IDLAPS-Offline",
     )
     app = BUNDLE(
         coll,
@@ -102,26 +94,13 @@ if IS_MACOS:
             "LSUIElement": False,
         },
     )
-
 else:
-    # ── Windows : single .exe ─────────────────────────────────────────────────
     exe = EXE(
-        pyz,
-        a.scripts,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        [],
+        pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
         name="IDLAPS-Offline",
-        debug=False,
-        bootloader_ignore_signals=False,
-        strip=False,
-        upx=True,
-        upx_exclude=[],
-        runtime_tmpdir=None,
-        console=False,
+        debug=False, bootloader_ignore_signals=False,
+        strip=False, upx=True, upx_exclude=[],
+        runtime_tmpdir=None, console=False,
         disable_windowed_traceback=False,
-        target_arch=None,
-        codesign_identity=None,
-        entitlements_file=None,
+        target_arch=None, codesign_identity=None, entitlements_file=None,
     )
