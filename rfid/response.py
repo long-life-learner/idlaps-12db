@@ -67,6 +67,9 @@ class ResponseDeviceInfo(Response):
         assert len(self.payload) == 152
 
         self.device_info = DeviceInfo.from_bytes(self.payload)
+    
+    def getSerialNumber(self) -> str:
+        return hex_readable(self.device_info.serial_number).replace(" ", "")
 
 
 class ResponseGetRfidProtocol(Response):

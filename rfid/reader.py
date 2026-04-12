@@ -133,7 +133,7 @@ class Reader(QObject):
     #     device_info = ResponseDeviceInfo(self.__receive_response(cmd_request))
     #     return device_info
     
-    def get_device_info(self) -> ResponseDeviceInfo | None:
+    def get_device_info(self) -> str:
         logger.info("Reader() > get_device_info()")
 
         cmd_request = CommandRequest.GET_DEVICE_INFO
@@ -144,8 +144,9 @@ class Reader(QObject):
             raw_response = self.__receive_response(cmd_request)
             if raw_response is None:
                 raise ValueError("Response is None")
-
-            return ResponseDeviceInfo(raw_response)
+            
+            response_device_info = ResponseDeviceInfo(raw_response)
+            return response_device_info.getSerialNumber()
         except ValueError as e:
             logger.error(f"Reader() > get_device_info() > Error: {e}")
             return None

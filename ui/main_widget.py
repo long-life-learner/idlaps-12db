@@ -122,9 +122,9 @@ class MainWidget(QWidget):
         self.menu_bar = QMenuBar()
         self.help_menu = QMenu("Help")
         self.help_menu.addAction("About", lambda: show_message_box("About",
-                                                                   "IDLaps Checkpoint"
-                                                                   f"Software version {os.getenv('VERSION')}",
-                                                                   success=True, with_icon=True))
+                                                                            "IDLaps Checkpoint"
+                                                                            f"Software version {os.getenv('VERSION')}",
+                                                                            success=True, with_icon=True))
         self.menu_bar.addMenu(self.help_menu)
 
         # RIKZA
@@ -181,10 +181,10 @@ class MainWidget(QWidget):
                 self.get_reader_settings_thread.start()
 
                 self.device_info = response.device_info
-                # self.setWindowTitle(f"{self.device_info.series.name}  "
-                #                     f"|  SN: {hex_readable(self.device_info.serial_number)}  "
-                #                     f"|  {str(self.reader.transport.connection_type)}")
-                self.setWindowTitle("IDLAPS CHECKPOINT")
+                self.setWindowTitle(f"{self.device_info.series.name}  "
+                                    f"|  SN: {hex_readable(self.device_info.serial_number)}  "
+                                    f"|  {str(self.reader.transport.connection_type)}")
+                # self.setWindowTitle("IDLAPS CHECKPOINT")
                 logger.info(f"MainWidget() > __receive_signal_device_info() "
                             f"> SN: {hex_readable(self.device_info.serial_number)}")
         elif isinstance(response, ReaderException):

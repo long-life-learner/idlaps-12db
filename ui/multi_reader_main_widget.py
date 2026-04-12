@@ -50,8 +50,11 @@ class MultiReaderMainWidget(QWidget):
             device_sn = "UNKNOWN"
             try:
                 dev_info = reader.get_device_info()
-                if dev_info and hasattr(dev_info, 'serial_number'):
-                    device_sn = dev_info.serial_number.hex().upper()
+                device_sn = dev_info
+                
+                
+                # if dev_info and hasattr(dev_info, 'serial_number'):
+                #     device_sn = dev_info.serial_number.hex().upper()
             except Exception as e:
                 logger.error(f"Gagal membaca Device SN: {e}")
                 
@@ -67,7 +70,7 @@ class MultiReaderMainWidget(QWidget):
             # Hubungkan indikator jumlah "Data in Wait" SQLite agar update ke layar Desktop
             sync_th.unsynced_count_signal.connect(main_w.tab.inventory_widget.update_unsynced_count)
             
-            tab_label = f"Reader {idx + 1} ({reader_id})"
+            tab_label = f"Reader {idx + 1} ({reader_id}) - {device_sn}"
             self.tab_widget.addTab(main_w, tab_label)
             
         layout.addWidget(self.tab_widget)
