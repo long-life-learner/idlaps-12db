@@ -93,11 +93,29 @@ class InventoryWidget(QWidget):
         self.inventory_table_view.horizontalHeader().setStretchLastSection(True)
         self.inventory_table_view.verticalHeader().setDefaultSectionSize(10)
 
-        # Widget allowed_minutes telah dihapus sesuai instruksi
+        # Widget allowed_minutes untuk filter duplikat di mode offline
+        self.allowed_minutes_label = QLabel("Min. Interval")
+        self.allowed_minutes_label.setFixedWidth(75)
+        self.allowed_minutes_spin_box = QSpinBox()
+        self.allowed_minutes_spin_box.setRange(1, 1440)
+        self.allowed_minutes_spin_box.setValue(5)
+        self.allowed_minutes_spin_box.setFixedWidth(50)
+        self.allowed_minutes_spin_box.setMinimumHeight(32)
+        self.allowed_minutes_unit_label = QLabel("min")
+        self.allowed_minutes_unit_label.setFixedWidth(30)
+        self.allowed_minutes_unit_label.setMinimumHeight(32)
+
+        # Hanya tampilkan jika mode offline
+        app_mode = os.getenv("APP_MODE", "online").lower()
+        is_offline = app_mode == "offline"
+        self.allowed_minutes_label.setVisible(is_offline)
+        self.allowed_minutes_spin_box.setVisible(is_offline)
+        self.allowed_minutes_unit_label.setVisible(is_offline)
 
         # Indikator Unsynced Data In Wait
         self.unsynced_label = QLabel("🟢 Data in Wait: 0")
         self.unsynced_label.setStyleSheet("font-weight: bold; color: #a6e3a1; padding-left: 15px;")
+        self.unsynced_label.setVisible(not is_offline)
 
         h_layout = QHBoxLayout()
         h_layout.addWidget(self.start_stop_button)
@@ -105,6 +123,9 @@ class InventoryWidget(QWidget):
         h_layout.addWidget(self.stop_after_combo_box)
         h_layout.addWidget(self.param_spin_box)
         h_layout.addWidget(self.param_unit_label)
+        h_layout.addWidget(self.allowed_minutes_label)
+        h_layout.addWidget(self.allowed_minutes_spin_box)
+        h_layout.addWidget(self.allowed_minutes_unit_label)
         h_layout.addWidget(self.unsynced_label)
         h_layout.addWidget(QLabel())
 
@@ -293,6 +314,10 @@ class InventoryTagItemModel(QAbstractTableModel):
         self.parent = parent
         self.tags: list[Tag] = []
         self.pending_sqlite: list[Tag] = []  # Buffer khusus untuk dikirim ke SQLite
+
+    @property
+    def allowed_minutes(self) -> int:
+        return self.parent.allowed_minutes_spin_box.value()
 
     def rowCount(
         self, parent: Union[QModelIndex, QPersistentModelIndex] = QModelIndex
