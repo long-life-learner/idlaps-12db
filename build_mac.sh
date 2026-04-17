@@ -58,12 +58,42 @@ sign_and_clear_quarantine() {
     fi
 }
 
+# ─── Helper: create DMG ───────────────────────────────────────────────────────
+# hdiutil create: standar macOS disk image
+create_dmg() {
+    local APP_PATH="$1"
+    local DMG_NAME="$2"
+    local VOL_NAME="$3"
+
+    echo "[INFO] Creating DMG: $DMG_NAME"
+
+    # Create temporary directory for DMG content
+    local TMP_DMG="dist/tmp_dmg"
+    rm -rf "$TMP_DMG"
+    mkdir -p "$TMP_DMG"
+
+    # Copy the app to the temporary directory
+    cp -R "$APP_PATH" "$TMP_DMG/"
+
+    # Create link to Applications
+    ln -s /Applications "$TMP_DMG/Applications"
+
+    # Create the DMG
+    hdiutil create -volname "$VOL_NAME" -srcfolder "$TMP_DMG" -ov -format UDZO "dist/$DMG_NAME"
+
+    # Clean up
+    rm -rf "$TMP_DMG"
+
+    echo "[OK] DMG created: dist/$DMG_NAME"
+}
+
 build_online() {
     echo ""
     echo "--- [1/2] Building: IDLAPS-Online.app ---"
     python3 -m PyInstaller --clean --noconfirm app-online.spec
     sign_and_clear_quarantine "dist/IDLAPS-Online.app"
-    echo "[OK] IDLAPS-Online.app selesai → dist/IDLAPS-Online.app"
+    create_dmg "dist/IDLAPS-Online.app" "IDLAPS-Online.dmg" "IDLAPS Online"
+    echo "[OK] IDLAPS-Online selesai → dist/IDLAPS-Online.dmg"
 }
 
 build_offline() {
@@ -71,7 +101,8 @@ build_offline() {
     echo "--- [2/2] Building: IDLAPS-Offline.app ---"
     python3 -m PyInstaller --clean --noconfirm app-offline.spec
     sign_and_clear_quarantine "dist/IDLAPS-Offline.app"
-    echo "[OK] IDLAPS-Offline.app selesai → dist/IDLAPS-Offline.app"
+    create_dmg "dist/IDLAPS-Offline.app" "IDLAPS-Offline.dmg" "IDLAPS Offline"
+    echo "[OK] IDLAPS-Offline selesai → dist/IDLAPS-Offline.dmg"
 }
 
 case "$MODE" in
@@ -90,8 +121,8 @@ esac
 echo ""
 echo "=================================================="
 echo " Build Selesai! Cek folder dist/"
-[ "$MODE" = "online" ] || [ "$MODE" = "all" ]  && echo " - dist/IDLAPS-Online.app"
-[ "$MODE" = "offline" ] || [ "$MODE" = "all" ] && echo " - dist/IDLAPS-Offline.app"
+[ "$MODE" = "online" ] || [ "$MODE" = "all" ]  && echo " - dist/IDLAPS-Online.dmg"
+[ "$MODE" = "offline" ] || [ "$MODE" = "all" ] && echo " - dist/IDLAPS-Offline.dmg"
 echo ""
 echo " Cara buka jika masih terblokir Gatekeeper:"
 echo "   Kanan-klik .app → Open → Open"

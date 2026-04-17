@@ -29,7 +29,7 @@ app.secret_key = "IDLAPS-CHECKPOINT"  # Gantilah dengan secret key yang aman
 # ─────────────────────────────────────────────────────────────────────────────
 # SQLite — database file di sebelah .exe (atau direktori root saat development)
 # ─────────────────────────────────────────────────────────────────────────────
-from ui.utils import get_db_path  # noqa: E402  (import di sini agar path tersedia)
+from ui.utils import get_db_path, get_app_data_dir  # noqa: E402
 _DB_PATH = get_db_path()
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{_DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -37,7 +37,7 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "connect_args": {"check_same_thread": False},  # Flask berjalan di thread terpisah
     "pool_pre_ping": True,
 }
-app.config["UPLOAD_FOLDER"] = "uploads"
+app.config["UPLOAD_FOLDER"] = os.path.join(get_app_data_dir(), "uploads")
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 db = SQLAlchemy(app)

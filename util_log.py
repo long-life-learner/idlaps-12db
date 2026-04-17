@@ -3,14 +3,15 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 import traceback
+from ui.utils import get_app_data_dir
 
 
 def setup_logging():
-    is_exist = os.path.exists('logs')
-    if not is_exist:
-        os.makedirs('logs')
+    app_data_dir = get_app_data_dir()
+    log_dir = os.path.join(app_data_dir, 'logs')
+    os.makedirs(log_dir, exist_ok=True)
 
-    log_file_path = f"logs/{os.getenv('FILENAME_LOG')}"
+    log_file_path = os.path.join(log_dir, os.getenv('FILENAME_LOG', 'app.log'))
     console = logging.StreamHandler()
     # console.setLevel(logging.NOTSET)
     console.setLevel(logging.WARNING)  # hanya WARNING ke atas yg muncul di console

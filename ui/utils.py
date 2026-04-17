@@ -452,6 +452,31 @@ def pyinstaller_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+def get_app_data_dir() -> str:
+    """
+    Get the platform-specific writable application data directory.
+    - macOS: ~/Library/Application Support/IDLAPS Checkpoint
+    - Windows: %APPDATA%/IDLAPS Checkpoint
+    - Linux: ~/.local/share/idlaps_checkpoint
+    """
+    app_name = "IDLAPS Checkpoint"
+    if sys.platform == "darwin":
+        # macOS
+        base = os.path.expanduser("~/Library/Application Support")
+    elif sys.platform == "win32":
+        # Windows
+        base = os.environ.get("APPDATA", os.path.expanduser("~/AppData/Roaming"))
+    else:
+        # Linux / Others
+        base = os.path.expanduser("~/.local/share")
+        app_name = "idlaps_checkpoint"
+
+    path = os.path.join(base, app_name)
+    # Pastikan folder sudah ada
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def get_db_path() -> str:
     """
     Mengembalikan path absolut ke file inventory.db.
@@ -461,8 +486,8 @@ def get_db_path() -> str:
     fungsi ini agar keduanya menulis ke file yang SAMA.
     """
     if getattr(sys, 'frozen', False):
-        # Berjalan sebagai hasil PyInstaller → pakai folder di sebelah .exe
-        base = os.path.dirname(sys.executable)
+        # Berjalan sebagai hasil PyInstaller → pakai folder data aplikasi yang writable
+        base = get_app_data_dir()
     else:
         # Berjalan sebagai script Python biasa
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
