@@ -13,6 +13,8 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch: # Memungkinkan pemicu manual dari tab Actions di GitHub
+
 
 permissions:
   contents: write
@@ -32,8 +34,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main   # ← Selalu dari branch online
+
 
       - uses: actions/setup-python@v5
         with:
@@ -53,7 +54,8 @@ jobs:
           echo "VERSION=${{ github.ref_name }}" >> .env.production
 
       - name: Build EXE
-        run: pyinstaller --clean --noconfirm app-online.spec
+        run: .\build_exe.bat online
+
 
       - name: Zip artifact
         run: |
@@ -73,8 +75,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main   # ← Tetap dari branch online (kode sama, beda .env saja)
+
 
       - uses: actions/setup-python@v5
         with:
@@ -94,7 +95,8 @@ jobs:
           echo "VERSION=${{ github.ref_name }}" >> .env.production
 
       - name: Build EXE
-        run: pyinstaller --clean --noconfirm app-offline.spec
+        run: .\build_exe.bat offline
+
 
       - name: Zip artifact
         run: |
