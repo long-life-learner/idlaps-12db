@@ -246,3 +246,7 @@ Thumbs.db
 test/
 IDLAPS CHECKPOINT 28032026.rar
 BACKUP/
+
+inventory.db
+inventory.db-shm
+inventory.db-wal
