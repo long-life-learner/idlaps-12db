@@ -64,15 +64,10 @@ jobs:
         run: .\build_exe.bat online
 
 
-      - name: Zip artifact
-        run: |
-          Compress-Archive -Path dist/IDLAPS-Online.exe `
-            -DestinationPath "dist/IDLAPS-Online-Windows-${{ github.ref_name }}.zip"
-
       - uses: actions/upload-artifact@v4
         with:
           name: IDLAPS-Online-Windows
-          path: dist/IDLAPS-Online-Windows-${{ github.ref_name }}.zip
+          path: dist/IDLAPS-Online.exe
 
   # ═══════════════════════════════════════════════════════════════════════════
   # JOB 2: Windows — Offline Mode
@@ -112,15 +107,10 @@ jobs:
         run: .\build_exe.bat offline
 
 
-      - name: Zip artifact
-        run: |
-          Compress-Archive -Path dist/IDLAPS-Offline.exe `
-            -DestinationPath "dist/IDLAPS-Offline-Windows-${{ github.ref_name }}.zip"
-
       - uses: actions/upload-artifact@v4
         with:
           name: IDLAPS-Offline-Windows
-          path: dist/IDLAPS-Offline-Windows-${{ github.ref_name }}.zip
+          path: dist/IDLAPS-Offline.exe
 
   # ═══════════════════════════════════════════════════════════════════════════
   # JOB 3: macOS — Online Mode
@@ -155,13 +145,10 @@ jobs:
           chmod +x build_mac.sh
           ./build_mac.sh online
 
-      - name: Rename DMG
-        run: mv dist/IDLAPS-Online.dmg "dist/IDLAPS-Online-macOS-${{ github.ref_name }}.dmg"
-
       - uses: actions/upload-artifact@v4
         with:
           name: IDLAPS-Online-macOS
-          path: dist/IDLAPS-Online-macOS-${{ github.ref_name }}.dmg
+          path: dist/IDLAPS-Online.dmg
 
   # ═══════════════════════════════════════════════════════════════════════════
   # JOB 4: macOS — Offline Mode
@@ -196,13 +183,10 @@ jobs:
           chmod +x build_mac.sh
           ./build_mac.sh offline
 
-      - name: Rename DMG
-        run: mv dist/IDLAPS-Offline.dmg "dist/IDLAPS-Offline-macOS-${{ github.ref_name }}.dmg"
-
       - uses: actions/upload-artifact@v4
         with:
           name: IDLAPS-Offline-macOS
-          path: dist/IDLAPS-Offline-macOS-${{ github.ref_name }}.dmg
+          path: dist/IDLAPS-Offline.dmg
 
   # ═══════════════════════════════════════════════════════════════════════════
   # JOB 5: Kumpulkan semua artifact → Buat GitHub Release
@@ -235,10 +219,10 @@ jobs:
 
             | Platform | Mode | File |
             |---|---|---|
-            | 🪟 Windows | Online (Gateway → time.idlaps.com) | `IDLAPS-Online-Windows-*.zip` |
-            | 🪟 Windows | Offline (Flask localhost:5001) | `IDLAPS-Offline-Windows-*.zip` |
-            | 🍎 macOS | Online | `IDLAPS-Online-macOS-*.dmg` |
-            | 🍎 macOS | Offline | `IDLAPS-Offline-macOS-*.dmg` |
+            | 🪟 Windows | Online (Gateway → time.idlaps.com) | `IDLAPS-Online.exe` |
+            | 🪟 Windows | Offline (Flask localhost:5001) | `IDLAPS-Offline.exe` |
+            | 🍎 macOS | Online | `IDLAPS-Online.dmg` |
+            | 🍎 macOS | Offline | `IDLAPS-Offline.dmg` |
 
             ### 🔧 Perbedaan Mode
             | | **Online** | **Offline** |
@@ -254,5 +238,5 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           files: |
-            release-assets/**/*.zip
+            release-assets/**/*.exe
             release-assets/**/*.dmg
