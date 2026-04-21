@@ -37,7 +37,7 @@ class NetworkSettingsWidget(QWidget):
         self.ip_address_line_edit.setValidator(IpAddressValidator())
         self.port_spin_box = QSpinBox()
         self.port_spin_box.setRange(0, 65535)
-        self.port_spin_box.setValue(int(os.getenv('TCP_PORT')))
+        self.port_spin_box.setValue(int(os.getenv('TCP_PORT', '2022')))
         self.port_spin_box.setMinimumWidth(70)
         self.netmask_line_edit = QLineEdit("255.255.255.0")
         self.netmask_line_edit.setValidator(IpAddressValidator())

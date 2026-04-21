@@ -55,7 +55,7 @@ class ConnectSerialWidget(QWidget):
         self.port_combo_box = QComboBox()
         self.baud_rate_combo_box = QComboBox()
         self.baud_rate_combo_box.addItems([str(baud_rate) for baud_rate in BaudRate])
-        selected_baud_rate = BaudRate.from_int(int(os.getenv('BAUD_RATE')))
+        selected_baud_rate = BaudRate.from_int(int(os.getenv('BAUD_RATE', '115200')))
         selected_baud_rate_index = self.baud_rate_combo_box.findText(str(selected_baud_rate),
                                                                      QtCore.Qt.MatchFlag.MatchFixedString)
         self.baud_rate_combo_box.setCurrentIndex(selected_baud_rate_index)

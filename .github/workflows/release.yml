@@ -48,10 +48,17 @@ jobs:
       - name: Write .env.production (Online Mode)
         shell: bash
         run: |
-          echo "APP_NAME=${{ secrets.APP_NAME }}" > .env.production
+          echo "APP_NAME=${{ secrets.APP_NAME || 'IDLAPS Checkpoint' }}" > .env.production
           echo "APP_MODE=online" >> .env.production
           echo "APP_ENV=production" >> .env.production
           echo "VERSION=${{ github.ref_name }}" >> .env.production
+          echo "IP_ADDRESS=192.168.1.200" >> .env.production
+          echo "TCP_PORT=2022" >> .env.production
+          echo "BAUD_RATE=115200" >> .env.production
+          echo "IP_NETWORK=192.168.1.0" >> .env.production
+          echo "CIDR=24" >> .env.production
+          echo "FILENAME_LOG=el_uhf_rc.txt" >> .env.production
+          echo "PORT=5000" >> .env.production
 
       - name: Build EXE
         run: .\build_exe.bat online
@@ -89,10 +96,17 @@ jobs:
       - name: Write .env.production (Offline Mode)
         shell: bash
         run: |
-          echo "APP_NAME=${{ secrets.APP_NAME }}" > .env.production
+          echo "APP_NAME=${{ secrets.APP_NAME || 'IDLAPS Checkpoint' }}" > .env.production
           echo "APP_MODE=offline" >> .env.production
           echo "APP_ENV=production" >> .env.production
           echo "VERSION=${{ github.ref_name }}" >> .env.production
+          echo "IP_ADDRESS=192.168.1.200" >> .env.production
+          echo "TCP_PORT=2022" >> .env.production
+          echo "BAUD_RATE=115200" >> .env.production
+          echo "IP_NETWORK=192.168.1.0" >> .env.production
+          echo "CIDR=24" >> .env.production
+          echo "FILENAME_LOG=el_uhf_rc.txt" >> .env.production
+          echo "PORT=5000" >> .env.production
 
       - name: Build EXE
         run: .\build_exe.bat offline

@@ -17,12 +17,18 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: Validasi PyInstaller tersedia
-where pyinstaller >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [INFO] PyInstaller tidak ditemukan. Mencoba menginstall via pip...
-    pip install pyinstaller
+:: Deteksi pyinstaller: utamakan dari venv proyek
+if exist "venv\Scripts\pyinstaller.exe" (
+    set PYINSTALLER=venv\Scripts\pyinstaller.exe
+) else (
+    where pyinstaller >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo [INFO] PyInstaller tidak ditemukan. Mencoba menginstall via pip...
+        pip install pyinstaller
+    )
+    set PYINSTALLER=pyinstaller
 )
+echo [INFO] Menggunakan PyInstaller: %PYINSTALLER%
 
 :: Pastikan .env.production tersedia
 if not exist ".env.production" (
@@ -30,6 +36,10 @@ if not exist ".env.production" (
     echo           Menyalin dari .env.example...
     copy .env.example .env.production
 )
+
+:: Matikan proses EXE yang mungkin masih berjalan sebelum hapus dist
+taskkill /f /im IDLAPS-Online.exe >nul 2>nul
+taskkill /f /im IDLAPS-Offline.exe >nul 2>nul
 
 :: Bersihkan cache build lama
 echo [INFO] Membersihkan cache build lama (build/ dan dist/)...
@@ -59,7 +69,7 @@ goto :final
 :build_online
 echo.
 echo --- [1/2] Building: IDLAPS-Online.exe ---
-pyinstaller --clean --noconfirm app-online.spec
+%PYINSTALLER% --clean --noconfirm app-online.spec
 if %errorlevel% neq 0 (
     echo [ERROR] Gagal membuat IDLAPS-Online.exe
 ) else (
@@ -71,7 +81,7 @@ exit /b
 :build_offline
 echo.
 echo --- [2/2] Building: IDLAPS-Offline.exe ---
-pyinstaller --clean --noconfirm app-offline.spec
+%PYINSTALLER% --clean --noconfirm app-offline.spec
 if %errorlevel% neq 0 (
     echo [ERROR] Gagal membuat IDLAPS-Offline.exe
 ) else (
@@ -84,5 +94,5 @@ echo.
 echo ==================================================
 echo  Build Selesai! Cek folder dist/
 echo ==================================================
-if not defined CI pause
+if "%CI%"=="" pause
 exit /b

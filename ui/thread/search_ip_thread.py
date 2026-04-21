@@ -29,7 +29,7 @@ class SearchIpThread(QThread):
         self._lock = threading.Lock()
 
         self.command: Command = Command(CommandRequest.SET_GET_NETWORK, data=bytearray([CommandOption.GET.value]))
-        self.tcp_port: int = int(os.getenv('TCP_PORT'))
+        self.tcp_port: int = int(os.getenv('TCP_PORT', '2022'))
 
     def _send_broadcast(self) -> None:
         broadcast_socket: socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
